@@ -1,0 +1,40 @@
+name: Release
+
+# Keeps a "release vX.Y.Z" pull request up to date from the conventional commits on main.
+# Merging it tags the release, publishes it on GitHub and attaches the plugin zip.
+# The tests run first and must pass.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # A failing test on main stops here: no release PR is updated and nothing is published.
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  release-please:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          # The release PR is opened with this token, not the workflow's own, so its checks run without
+          # someone approving them: GitHub holds back a bot's pull requests like a stranger's.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+      - uses: actions/checkout@v7
+        if: ${{ steps.release.outputs.release_created }}
+
+      - name: Build and attach the plugin zip
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          zip -r afterword.koplugin.zip afterword.koplugin
+          gh release upload "$TAG" afterword.koplugin.zip

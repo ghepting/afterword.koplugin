@@ -1,0 +1,20 @@
+# Afterword
+
+A KOReader plugin in Lua. `tests/run.sh` runs the tests under plain `luajit`.
+
+## Every pull request
+
+- Before opening a pull request, check `README.md` against the change and update whatever it makes wrong: what the plugin shows, the settings, install, the development commands. If nothing in the README is affected, say so in the PR description.
+- Do not describe something the plugin does not do. Read the code if unsure.
+- The PR title is a conventional commit (`feat:`, `fix:`, `docs:`, `chore:`, `test:`, `refactor:`); pull requests are squash-merged.
+
+## Wording
+
+- The name is **Afterword**, one word, in all user-visible text, comments, README and PR text.
+- Say "select" and "selected" for choosing a box or an item, never "tick".
+
+## Where things go
+
+- `afterword.koplugin/afterword/series.lua`, `stats.lua`, `finish.lua` and `suggest.lua` are pure logic with no KOReader in them. Keep it that way and test it.
+- `store.lua` reads KOReader's databases, `screen.lua` is the widget, and `main.lua` is the wiring: the menu, the end-of-book handler, the picker.
+- The tests stub the few KOReader modules the logic loads (`tests/unit/helper.lua`).
