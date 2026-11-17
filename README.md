@@ -42,7 +42,6 @@ The screenshots are from the KOReader desktop emulator, with reading numbers mad
 - **Show at the end of a book.** On by default. Off, KOReader's own end-of-book popup is used as before.
 - **Suggest from a collection….** Pick any KOReader collection, and Pick next also offers its first books, in its own order. A Bookshelf shelf is a collection, so it works with one. Choose **None** to turn it off.
 - **Check for updates.** Asks GitHub whether a newer Afterword has been released, only when you tap it. If there is one it shows the release notes and offers to download it, check it against GitHub's checksum, install it and restart KOReader. If anything goes wrong nothing is changed, and the old version is kept as `afterword.koplugin.old`. A copy that is a link to a source checkout is not updated from here.
-- **Preview now.** Shows the screen for the book you have open, without reaching its end. A preview never changes the book's status.
 
 ## Install
 

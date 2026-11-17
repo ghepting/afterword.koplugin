@@ -74,12 +74,6 @@ function Afterword:addToMainMenu(menu_items)
                 keep_menu_open = true,
                 callback = function() self:checkForUpdates() end,
             },
-            {
-                text = _("Preview now"),
-                help_text = _("Show the screen for this book without reaching its end."),
-                enabled_func = function() return self.ui.document ~= nil end, -- it needs a book
-                callback = function() self:handleEnd(true) end,
-            },
         },
     }
 end
@@ -247,23 +241,18 @@ function Afterword:setStatus(status)
     end)
 end
 
--- Shows the screen and returns true, or returns nil to leave the end of the book to KOReader. `preview`: shown on request, in the
--- middle of a book (so the quickstart guide is no reason to hold back).
-function Afterword:handleEnd(preview)
-    if not preview then
-        local QuickStart = require("ui/quickstart")
-        if G_reader_settings:readSetting("lastfile") == QuickStart.quickstart_filename then return nil end
-    end
+-- Shows the screen and returns true, or returns nil to leave the end of the book to KOReader.
+function Afterword:handleEnd()
+    local QuickStart = require("ui/quickstart")
+    if G_reader_settings:readSetting("lastfile") == QuickStart.quickstart_filename then return nil end
     if not (self.ui.document and self.ui.document.file) then return nil end
     local info = self:gather()
     local was = self:status()
     local finished = Finish.default(G_reader_settings:isTrue("end_document_auto_mark"), was)
-    -- Leaving the screen applies the box. A preview, which may be shown halfway through a book, never changes the book's status.
+    -- Leaving the screen applies the box.
     local function close()
-        if not preview then
-            local status = Finish.status_after(was, finished)
-            if status then self:setStatus(status) end
-        end
+        local status = Finish.status_after(was, finished)
+        if status then self:setStatus(status) end
         if self.screen then UIManager:close(self.screen); self.screen = nil end
     end
     self.screen = AfterwordScreen:new {
