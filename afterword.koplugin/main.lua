@@ -1,4 +1,10 @@
+local ConfirmBox = require("ui/widget/confirmbox")
 local DataStorage = require("datastorage")
+local Device = require("device")
+local InfoMessage = require("ui/widget/infomessage")
+local ButtonDialog = require("ui/widget/buttondialog")
+local lfs = require("libs/libkoreader-lfs")
+local util = require("util")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
@@ -11,6 +17,8 @@ local Store = require("afterword/store")
 local AfterwordScreen = require("afterword/screen")
 local Finish = require("afterword/finish")
 local Suggest = require("afterword/suggest")
+local Updater = require("afterword/updater")
+local Installer = require("afterword/installer")
 
 local Afterword = WidgetContainer:extend {
     name = "afterword",
@@ -59,6 +67,12 @@ function Afterword:addToMainMenu(menu_items)
                 help_text = _("Pick next also offers the first books of a collection you choose here."),
                 keep_menu_open = true,
                 callback = function(touchmenu_instance) self:chooseCollection(touchmenu_instance) end,
+            },
+            {
+                text = _("Check for updates"),
+                help_text = _("Ask GitHub whether a newer Afterword has been released, and install it if you want. Only when you tap this."),
+                keep_menu_open = true,
+                callback = function() self:checkForUpdates() end,
             },
             {
                 text = _("Preview now"),
@@ -273,6 +287,118 @@ function Afterword:handleEnd(preview)
     UIManager:show(self.screen)
     logger.info("afterword: screen shown for " .. tostring(info.file))
     return true
+end
+
+-- One dialog at a time: a second tap while one is up (easy on a slow e-ink screen) is ignored, so dialogs cannot stack.
+function Afterword:showDialog(make)
+    -- Not called `dialog`: inside a book the reader gives every plugin a `dialog` field that points at itself, which would make
+    -- this guard refuse to show anything.
+    if self.popup and UIManager:isWidgetShown(self.popup) then return end
+    self.popup = make()
+    UIManager:show(self.popup)
+end
+
+function Afterword:notify(text)
+    self:showDialog(function() return InfoMessage:new { text = text } end)
+end
+
+-- The version this copy says it is, from its own _meta.lua.
+function Afterword:currentVersion()
+    local ok, meta = pcall(dofile, self.path .. "/_meta.lua")
+    return ok and type(meta) == "table" and meta.version or "0.0.0"
+end
+
+-- Asks GitHub for the latest release, when online, and says what it found. Runs only when asked.
+function Afterword:checkForUpdates()
+    local current = self:currentVersion()
+    require("ui/network/manager"):runWhenOnline(function()
+        local busy = InfoMessage:new { text = _("Checking for updates…") }
+        UIManager:show(busy)
+        UIManager:forceRePaint()
+        local result = Updater.check(current)
+        UIManager:close(busy)
+        self:showUpdateResult(current, result)
+    end)
+end
+
+-- Why an update cannot be installed here, or nil when it can: this copy is a link to a source checkout, which an update would swap
+-- out from under the developer.
+function Afterword:updateBlockedReason()
+    if lfs.symlinkattributes(self.path, "mode") == "link" then
+        return _("This copy of Afterword is a link to a source checkout, so it is updated with git, not from here.")
+    end
+end
+
+function Afterword:showUpdateResult(current, result)
+    local blocked = self:updateBlockedReason()
+    self:showDialog(function()
+        local dialog
+        local function act(fn)
+            return function()
+                UIManager:close(dialog)
+                fn()
+            end
+        end
+        local rows = {}
+        local text = Updater.message(result, current)
+        if result.state == "available" then
+            if blocked then
+                text = text .. "\n\n" .. blocked
+            elseif result.asset then
+                table.insert(rows, { { text = _("Update now"), callback = act(function() self:confirmInstall(current, result) end) } })
+            end
+            table.insert(rows, { { text = _("Close"), callback = act(function() end) } })
+            -- A viewer scrolls long release notes and keeps its buttons on screen, which a dialog's title does not.
+            dialog = require("ui/widget/textviewer"):new { title = _("Update available"), text = text, buttons_table = rows }
+            return dialog
+        end
+        table.insert(rows, { { text = _("Close"), callback = act(function() end) } })
+        dialog = ButtonDialog:new { title = text, title_align = "center", buttons = rows }
+        return dialog
+    end)
+end
+
+function Afterword:confirmInstall(current, result)
+    local blocked = self:updateBlockedReason()
+    if blocked then self:notify(blocked) return end
+    self:showDialog(function()
+        return ConfirmBox:new {
+            text = T(_("Update Afterword from %1 to %2?\n\nThis downloads %3, checks it against GitHub's checksum, installs it and offers to restart KOReader. If anything goes wrong nothing is changed, and the current version is kept as afterword.koplugin.old."),
+                current, result.latest, util.getFriendlySize(result.asset.size or 0)),
+            ok_text = _("Update"),
+            ok_callback = function() self:installUpdate(result) end,
+        }
+    end)
+end
+
+-- Downloads, checks and installs the release in `result` (see Updater.interpret) over this plugin.
+function Afterword:installUpdate(result)
+    -- The confirm box is still up while its callback runs, and showDialog shows nothing over a popup.
+    if self.popup then UIManager:close(self.popup) end
+    local busy = InfoMessage:new { text = _("Updating Afterword…") }
+    UIManager:show(busy)
+    UIManager:forceRePaint()
+    local cache = DataStorage:getDataDir() .. "/cache"
+    lfs.mkdir(cache)
+    lfs.mkdir(cache .. "/afterword")
+    local ok, err = Installer.install(result.asset, result.latest, self.path, cache .. "/afterword/update.zip")
+    UIManager:close(busy)
+    if not ok then
+        self:notify(T(_("The update was not installed, and nothing was changed.\n\n%1"), tostring(err)))
+        return
+    end
+    local can_restart = Device:canRestart()
+    self:showDialog(function()
+        return ConfirmBox:new {
+            text = can_restart and T(_("Afterword %1 is installed.\n\nRestart KOReader to start using it."), result.latest)
+                or T(_("Afterword %1 is installed.\n\nQuit KOReader and open it again to start using it."), result.latest),
+            ok_text = can_restart and _("Restart now") or _("Quit now"),
+            cancel_text = _("Later"),
+            ok_callback = function()
+                if can_restart then UIManager:restartKOReader() else UIManager:quit() end
+            end,
+        }
+    end)
 end
 
 return Afterword
