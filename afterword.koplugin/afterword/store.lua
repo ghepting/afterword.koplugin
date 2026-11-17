@@ -42,4 +42,21 @@ function Store.library(conn)
     return out
 end
 
+-- books(conn) -> { { path, title, authors, series, series_index }, ... } every book KOReader has details of (the whole library,
+-- series or not), for suggesting what to read next.
+function Store.books(conn)
+    local res, n = rows(conn,
+        "SELECT directory, filename, title, authors, series, series_index FROM bookinfo "
+        .. "WHERE has_meta = 'Y' AND ignore_meta IS NOT 'Y' AND unsupported IS NULL;")
+    local out = {}
+    for i = 1, n do
+        local series = res[5][i]
+        out[#out + 1] = {
+            path = res[1][i] .. res[2][i], title = res[3][i], authors = res[4][i],
+            series = (series and series ~= "") and series or nil, series_index = tonumber(res[6][i]),
+        }
+    end
+    return out
+end
+
 return Store

@@ -3,7 +3,7 @@
 --
 --   Screen:new{ title, author, series_text, cover (a blitbuffer or nil), lines = { { label, value } ... }, rating (0-5),
 --               on_rate = function(n), finished (the box's start), on_finished = function(bool),
---               next_title, on_next = function(), on_done = function() }
+--               next_title, on_next = function(), on_pick = function() (a "Pick next" button), on_done = function() }
 local Blitbuffer = require("ffi/blitbuffer")
 local ButtonTable = require("ui/widget/buttontable")
 local CheckButton = require("ui/widget/checkbutton")
@@ -34,7 +34,7 @@ local AfterwordScreen = InputContainer:extend {
     name = "afterword_screen",
     title = nil, author = nil, series_text = nil, cover = nil,
     lines = nil, rating = 0, on_rate = nil,
-    next_title = nil, on_next = nil, on_done = nil,
+    next_title = nil, on_next = nil, on_pick = nil, on_done = nil,
     finished = false, on_finished = nil, -- the "mark as finished" box: how it starts, and told when it changes
 }
 
@@ -134,7 +134,11 @@ function AfterwordScreen:init()
     if self.next_title then
         rows[#rows + 1] = { { text = _("Next: ") .. self.next_title, bold = true, callback = function() if self.on_next then self.on_next() end end } }
     end
-    rows[#rows + 1] = { { text = _("Done"), callback = function() self:finish() end } }
+    local last = { { text = _("Done"), callback = function() self:finish() end } }
+    if self.on_pick then
+        table.insert(last, 1, { text = _("Pick next\u{2026}"), callback = function() self.on_pick() end })
+    end
+    rows[#rows + 1] = last
     group[#group + 1] = ButtonTable:new { width = inner, buttons = rows, show_parent = self }
 
     self.frame = FrameContainer:new {

@@ -3,12 +3,14 @@ local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
 local _ = require("gettext")
+local T = require("ffi/util").template
 
 local Series = require("afterword/series")
 local Stats = require("afterword/stats")
 local Store = require("afterword/store")
 local AfterwordScreen = require("afterword/screen")
 local Finish = require("afterword/finish")
+local Suggest = require("afterword/suggest")
 
 local Afterword = WidgetContainer:extend {
     name = "afterword",
@@ -16,6 +18,7 @@ local Afterword = WidgetContainer:extend {
 }
 
 local SETTING = "afterword_enabled"
+local COLLECTION = "afterword_collection" -- the name of a collection to suggest from, or unset
 
 local function enabled()
     return G_reader_settings:readSetting(SETTING) ~= false -- on unless switched off
@@ -49,12 +52,31 @@ function Afterword:addToMainMenu(menu_items)
                 callback = function() G_reader_settings:saveSetting(SETTING, not enabled()) end,
             },
             {
+                text_func = function()
+                    local name = G_reader_settings:readSetting(COLLECTION)
+                    return name and T(_("Suggest from the collection: %1"), name) or _("Suggest from a collection\u{2026}")
+                end,
+                help_text = _("Pick next also offers the first books of a collection you choose here."),
+                keep_menu_open = true,
+                callback = function(touchmenu_instance) self:chooseCollection(touchmenu_instance) end,
+            },
+            {
                 text = _("Preview now"),
                 help_text = _("Show the screen for this book without reaching its end."),
                 callback = function() self:handleEnd(true) end,
             },
         },
     }
+end
+
+-- Where a book stands, in the words suggest.lua uses.
+local function status_of(path)
+    local BookList = require("ui/widget/booklist")
+    local info = BookList.getBookInfo(path)
+    if not info or not info.been_opened then return "new" end
+    if info.status == "complete" or (tonumber(info.percent_finished) or 0) >= 1 then return "complete" end
+    if info.status == "abandoned" then return "abandoned" end
+    return "reading"
 end
 
 -- What the screen needs, gathered from KOReader's databases; each piece may be missing.
@@ -77,7 +99,9 @@ function Afterword:gather()
         local BIM = require("bookinfomanager")
         BIM:openDbConnection()
         local library = Store.library(BIM.db_conn)
-        out.next = Series.next_in_series(library, file)
+        for _i, r in ipairs(Series.after(library, file)) do
+            if status_of(r.path) ~= "complete" then out.next = r; break end -- the first one after this you have not finished
+        end
         local pos = Series.position(library, file)
         if pos then out.series_text = string.format("%s #%s", pos.series, string.format("%g", pos.index)) end
         local info = BIM:getBookInfo(file, true)
@@ -102,6 +126,89 @@ function Afterword:setRating(n)
     pcall(function()
         require("ui/widget/booklist").setBookInfoCacheProperty(self.ui.document.file, "rating", n)
     end)
+end
+
+-- Asks which collection to suggest from (or none).
+function Afterword:chooseCollection(touchmenu_instance)
+    local ReadCollection = require("readcollection")
+    local buttons = {}
+    local dialog
+    local names = {}
+    for name in pairs(ReadCollection.coll or {}) do names[#names + 1] = name end
+    table.sort(names, function(a, b) return a:lower() < b:lower() end)
+    local function choose(name)
+        if name then G_reader_settings:saveSetting(COLLECTION, name) else G_reader_settings:delSetting(COLLECTION) end
+        UIManager:close(dialog)
+        if touchmenu_instance then touchmenu_instance:updateItems() end
+    end
+    buttons[#buttons + 1] = { { text = _("None"), callback = function() choose(nil) end } }
+    for _i, name in ipairs(names) do
+        buttons[#buttons + 1] = { { text = name, callback = function() choose(name) end } }
+    end
+    local ButtonDialog = require("ui/widget/buttondialog")
+    dialog = ButtonDialog:new { title = _("Suggest from which collection?"), buttons = buttons }
+    UIManager:show(dialog)
+end
+
+-- What to read next, in groups, for the book just finished.
+function Afterword:suggestions(file)
+    local library, history, collection = {}, {}, nil
+    local ok, err = pcall(function()
+        local BIM = require("bookinfomanager")
+        BIM:openDbConnection()
+        library = Store.books(BIM.db_conn)
+    end)
+    if not ok then logger.warn("afterword: could not read the library: " .. tostring(err)) end
+    pcall(function()
+        for _i, item in ipairs(require("readhistory").hist or {}) do history[#history + 1] = item.file end
+    end)
+    local name = G_reader_settings:readSetting(COLLECTION)
+    if name then
+        pcall(function()
+            local ReadCollection = require("readcollection")
+            local paths = {}
+            for _i, item in ipairs(ReadCollection:getOrderedCollection(name)) do paths[#paths + 1] = item.file end
+            collection = { name = name, paths = paths }
+        end)
+    end
+    local lfs = require("libs/libkoreader-lfs")
+    return Suggest.groups {
+        current = file, library = library, status_of = status_of,
+        modified_of = function(path) return lfs.attributes(path, "modification") or 0 end,
+        history = history, collection = collection,
+    }
+end
+
+-- The list of suggestions. Tapping a book opens it.
+function Afterword:showPicker(info, on_open)
+    local Menu = require("ui/widget/menu")
+    local groups = self:suggestions(info.file)
+    local first_author = info.author and info.author:match("^[^,]+") or nil
+    local heading = {
+        next_in_series = function() return _("Next in the series") end,
+        more_by_author = function() return first_author and T(_("More by %1"), first_author) or _("More by this author") end,
+        collection = function(g) return T(_("From %1"), g.collection_name or "") end,
+        recently_added = function() return _("Recently added") end,
+        started = function() return _("Pick up where you left off") end,
+    }
+    local items = {}
+    for _i, g in ipairs(groups) do
+        items[#items + 1] = { text = (heading[g.name] or function() return g.name end)(g), bold = true, dim = true, callback = function() end }
+        for _j, book in ipairs(g.books) do
+            items[#items + 1] = { text = "    " .. book.title, mandatory = book.note, callback = function() on_open(book.path) end }
+        end
+    end
+    if #items == 0 then
+        UIManager:show(require("ui/widget/infomessage"):new { text = _("Nothing to suggest yet.") })
+        return
+    end
+    local menu
+    menu = Menu:new {
+        title = _("Pick next"), item_table = items, is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
+        close_callback = function() UIManager:close(menu) end,
+    }
+    UIManager:show(menu)
+    return menu
 end
 
 -- The reader's book status as KOReader keeps it ("complete", "reading", ...), or nil.
@@ -149,6 +256,12 @@ function Afterword:handleEnd(preview)
         on_next = function()
             close()
             self.ui:switchDocument(info.next.path)
+        end,
+        on_pick = function()
+            self:showPicker(info, function(path)
+                close()
+                self.ui:switchDocument(path)
+            end)
         end,
         on_done = close,
     }
