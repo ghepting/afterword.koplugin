@@ -14,7 +14,7 @@ local Suggest = require("afterword/suggest")
 
 local Afterword = WidgetContainer:extend {
     name = "afterword",
-    is_doc_only = true, -- it only matters while a book is open
+    is_doc_only = false, -- loaded in the file browser too, so it can be set up before a book is opened
 }
 
 local SETTING = "afterword_enabled"
@@ -42,7 +42,7 @@ end
 
 function Afterword:addToMainMenu(menu_items)
     menu_items.afterword = {
-        sorting_hint = "more_tools",
+        sorting_hint = "tools",
         text = _("Afterword"),
         sub_item_table = {
             {
@@ -63,6 +63,7 @@ function Afterword:addToMainMenu(menu_items)
             {
                 text = _("Preview now"),
                 help_text = _("Show the screen for this book without reaching its end."),
+                enabled_func = function() return self.ui.document ~= nil end, -- it needs a book
                 callback = function() self:handleEnd(true) end,
             },
         },
