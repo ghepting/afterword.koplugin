@@ -30,6 +30,24 @@ function Series.next_in_series(records, path)
     return best
 end
 
+-- after(records, path) -> every book that comes after this one in its series, in order (the same rule as next_in_series).
+function Series.after(records, path)
+    local me = find(records, path)
+    local mine = me and tonumber(me.series_index)
+    if not mine then return {} end
+    local out = {}
+    for _i, r in ipairs(records) do
+        local n = tonumber(r.series_index)
+        if r.path ~= path and norm(r.series) == norm(me.series) and n and n > mine then out[#out + 1] = r end
+    end
+    table.sort(out, function(a, b)
+        local na, nb = tonumber(a.series_index), tonumber(b.series_index)
+        if na ~= nb then return na < nb end
+        return tostring(a.path) < tostring(b.path)
+    end)
+    return out
+end
+
 -- position(records, path) -> { index, last } where `index` is this book's number and `last` the highest number you own in its
 -- series; for "book 5 of 8 owned". nil when it is not in a numbered series.
 function Series.position(records, path)

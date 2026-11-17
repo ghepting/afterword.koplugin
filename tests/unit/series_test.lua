@@ -55,4 +55,13 @@ T.test("position: this book's number and the highest number you own", function()
     T.eq(Series.position(lib, "/free"), nil)
 end)
 
+T.test("everything after a book, in order, skipping other series and unnumbered books", function()
+    local after = Series.after(lib, "/s5")
+    local out = {}
+    for i, r in ipairs(after) do out[i] = r.path end
+    T.eq(table.concat(out, " "), "/s6 /s8")
+    T.eq(#Series.after(lib, "/s8"), 0)
+    T.eq(#Series.after(lib, "/free"), 0)
+end)
+
 T.done()
