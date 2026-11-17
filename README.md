@@ -1,6 +1,18 @@
-# Afterword
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo-light.svg" width="140" alt="Afterword: two books on a shelf, one leaning on the other, with a play button beside them">
+  </picture>
+</p>
 
-What comes after the last page. When you reach the end of a book, Afterword shows one screen: how the book went, a place to rate it, and what to read next. A plugin for [KOReader](https://github.com/koreader/koreader).
+<h1 align="center">Afterword</h1>
+
+<p align="center">
+  What comes after the last page.<br>
+  A plugin for <a href="https://github.com/koreader/koreader">KOReader</a>.
+</p>
+
+When you reach the end of a book, Afterword shows one screen: how the book went, a place to rate it, and what to read next.
 
 <p align="center">
   <img src="assets/screen.png" width="360" alt="The screen at the end of Career of Evil: cover, series, how long it took, rating, and the next book">
@@ -41,3 +53,5 @@ The screenshots are from the KOReader desktop emulator, with reading numbers mad
 `tests/run.sh` runs the unit tests under plain `luajit`. The logic (`series.lua`, `stats.lua`, `finish.lua`, `suggest.lua`) has no KOReader code in it, so that is all it needs. The screen and the wiring (`main.lua`, `screen.lua`, `store.lua`) are checked in KOReader itself.
 
 KOReader's own handler for the end of a book runs before any plugin and does not stop the event, so Afterword wraps that handler for the book that is open: its screen when it is on, KOReader's own, untouched, when it is off.
+
+The logo is drawn by `tools/make-logo.py`, which needs KOReader's `NotoSans-Bold.ttf`. It writes `assets/logo-light.svg` and `assets/logo-dark.svg`.
