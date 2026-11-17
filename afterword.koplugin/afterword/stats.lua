@@ -18,12 +18,13 @@ function Stats.span_days(first, finished)
     return math.max(1, math.ceil((finished - first) / DAY))
 end
 
--- pages_per_day(book) -> whole pages a day over the days it took, or nil.
+-- pages_per_day(book) -> whole pages a day over the days it took, or nil (also when it rounds to none: "0 pages a day" says nothing).
 function Stats.pages_per_day(book)
     local days = Stats.span_days(book.first_read, book.finished)
     local pages = tonumber(book.read_pages)
     if not days or not pages or pages <= 0 then return nil end
-    return math.floor(pages / days + 0.5)
+    local pace = math.floor(pages / days + 0.5)
+    return pace >= 1 and pace or nil
 end
 
 -- "3 weeks, 2 days", "5 days", "1 day": how long it took from first page to last.
