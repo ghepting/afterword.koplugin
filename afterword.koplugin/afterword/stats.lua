@@ -59,7 +59,7 @@ function Stats.lines(book)
     local time = Stats.duration_text(book.read_seconds)
     if time then out[#out + 1] = { label = _("Time reading"), value = time } end
     local pace = Stats.pages_per_day(book)
-    if pace then out[#out + 1] = { label = _("Pace"), value = T(_("%1 pages a day"), pace) } end
+    if pace then out[#out + 1] = { label = _("Pace"), value = T(_.ngettext("%1 page a day", "%1 pages a day", pace), pace) } end
     return out
 end
 
