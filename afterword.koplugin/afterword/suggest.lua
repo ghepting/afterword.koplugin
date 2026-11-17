@@ -63,14 +63,18 @@ function Suggest.groups(ctx)
     end
     offer("series", "next_in_series", series)
 
-    -- 2. More by this author: their other books you have not started, series together and in order.
+    -- 2. More by this author: their other books you have not started, series together and in order. Not this book's own series: that
+    -- is the group above, and three more books of it under "more by" is the same suggestion again.
     local me = by_path[ctx.current]
     local mine = me and authors_of(me) or {}
     local author = {}
     if next(mine) then
         local others = {}
         for _i, r in ipairs(ctx.library or {}) do
-            if r.path ~= ctx.current and shares_author(mine, authors_of(r)) and status_of(r.path) == "new" then others[#others + 1] = r end
+            local same_series = me and norm(me.series) ~= "" and norm(r.series) == norm(me.series)
+            if r.path ~= ctx.current and not same_series and shares_author(mine, authors_of(r)) and status_of(r.path) == "new" then
+                others[#others + 1] = r
+            end
         end
         table.sort(others, function(a, b)
             local sa, sb = norm(a.series), norm(b.series)

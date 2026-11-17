@@ -42,9 +42,13 @@ T.test("the next book in the series is the first one you have not finished", fun
 end)
 T.test("more by this author: books you have not started, series together, others last", function()
     local g = find(Suggest.groups(ctx()), "author")
-    -- /s5 is taken by the series group. The author's other books you have not started: series by name (Potter before Strike), then
-    -- the standalone last.
-    T.eq(paths(g), "/hp1 /s6 /solo")
+    -- The Strike books are the series group's business, not "more by". The author's other books you have not started: series by
+    -- name, then the standalone last.
+    T.eq(paths(g), "/hp1 /solo")
+end)
+T.test("more by the author leaves out the book's own series", function()
+    local g = find(Suggest.groups(ctx()), "author")
+    for _, b in ipairs(g.books) do T.eq(b.path:match("^/s%d") == nil, true, b.path .. " is in the series") end
 end)
 T.test("a book appears once, in the first group that wants it", function()
     local seen = {}

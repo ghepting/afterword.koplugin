@@ -160,7 +160,11 @@ function Afterword:suggestions(file)
     end)
     if not ok then logger.warn("afterword: could not read the library: " .. tostring(err)) end
     pcall(function()
-        for _i, item in ipairs(require("readhistory").hist or {}) do history[#history + 1] = item.file end
+        -- KOReader's own manual is in the history after a first run; it is not something to read next.
+        local manual = require("ui/quickstart").quickstart_filename
+        for _i, item in ipairs(require("readhistory").hist or {}) do
+            if item.file ~= manual then history[#history + 1] = item.file end
+        end
     end)
     local name = G_reader_settings:readSetting(COLLECTION)
     if name then
