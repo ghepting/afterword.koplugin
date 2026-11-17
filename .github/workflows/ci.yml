@@ -26,3 +26,7 @@ jobs:
 
       - name: Unit tests
         run: tests/run.sh
+
+      # The updater files are synced from a pinned ShelfSpace commit (tools/shared-from). Fails if one was edited here.
+      - name: Shared files match ShelfSpace
+        run: tools/sync-shared.sh --check

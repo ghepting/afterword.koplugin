@@ -41,6 +41,7 @@ The screenshots are from the KOReader desktop emulator, with reading numbers mad
 
 - **Show at the end of a book.** On by default. Off, KOReader's own end-of-book popup is used as before.
 - **Suggest from a collection….** Pick any KOReader collection, and Pick next also offers its first books, in its own order. A Bookshelf shelf is a collection, so it works with one. Choose **None** to turn it off.
+- **Check for updates.** Asks GitHub whether a newer Afterword has been released, only when you tap it. If there is one it shows the release notes and offers to download it, check it against GitHub's checksum, install it and restart KOReader. If anything goes wrong nothing is changed, and the old version is kept as `afterword.koplugin.old`. A copy that is a link to a source checkout is not updated from here.
 - **Preview now.** Shows the screen for the book you have open, without reaching its end. A preview never changes the book's status.
 
 ## Install
@@ -50,7 +51,7 @@ The screenshots are from the KOReader desktop emulator, with reading numbers mad
 
 ## Development
 
-`tests/run.sh` runs the unit tests under plain `luajit`. The logic (`series.lua`, `stats.lua`, `finish.lua`, `suggest.lua`) has no KOReader code in it, so that is all it needs. The screen and the wiring (`main.lua`, `screen.lua`, `store.lua`) are checked in KOReader itself.
+`tests/run.sh` runs the unit tests under plain `luajit`. The logic (`series.lua`, `stats.lua`, `finish.lua`, `suggest.lua`, and the update check's `version.lua`, `updater.lua` and `installer.lua`) has no KOReader code in it, so that is all it needs. The three update files are ShelfSpace's, synced by `tools/sync-shared.sh` from a pinned commit; do not edit them here. The screen and the wiring (`main.lua`, `screen.lua`, `store.lua`) are checked in KOReader itself.
 
 KOReader's own handler for the end of a book runs before any plugin and does not stop the event, so Afterword wraps that handler for the book that is open: its screen when it is on, KOReader's own, untouched, when it is off.
 

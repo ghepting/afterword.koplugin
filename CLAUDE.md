@@ -18,3 +18,7 @@ A KOReader plugin in Lua. `tests/run.sh` runs the tests under plain `luajit`.
 - `afterword.koplugin/afterword/series.lua`, `stats.lua`, `finish.lua` and `suggest.lua` are pure logic with no KOReader in them. Keep it that way and test it.
 - `store.lua` reads KOReader's databases, `screen.lua` is the widget, and `main.lua` is the wiring: the menu, the end-of-book handler, the picker.
 - The tests stub the few KOReader modules the logic loads (`tests/unit/helper.lua`).
+
+## Shared with ShelfSpace
+
+`afterword/version.lua`, `updater.lua`, `installer.lua` and their tests are ShelfSpace's, synced here with only the names changed, so the update check works the same in both. **Do not edit them here**: CI fails (`tools/sync-shared.sh --check`), and a sync overwrites them. To change one, change it in ShelfSpace, put the new ShelfSpace commit in `tools/shared-from`, and run `tools/sync-shared.sh`.
