@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/ghepting/afterword.koplugin/compare/v0.1.0...v0.2.0) (2026-11-17)
+
+
+### Features
+
+* Check for updates, from GitHub's releases, installed over the plugin after a checksum ([#2](https://github.com/ghepting/afterword.koplugin/issues/2)) ([3ea3ec9](https://github.com/ghepting/afterword.koplugin/commit/3ea3ec960f24b8cc115dbaabf1882a2768e619af))
+
+
+### Bug Fixes
+
+* take the Preview now entry out of the menu ([#4](https://github.com/ghepting/afterword.koplugin/issues/4)) ([bda045d](https://github.com/ghepting/afterword.koplugin/commit/bda045db38266bb570d277f9bd61a05119a97592))
+
 ## 0.1.0 (2026-11-17)
 
 
