@@ -1,0 +1,20 @@
+# Changelog
+
+## 0.1.0 (2026-11-17)
+
+
+### Features
+
+* a logo, two books with a play badge on a shelf, in the style of ShelfSpace and SideShelf ([bb2ba33](https://github.com/ghepting/afterword.koplugin/commit/bb2ba33c2bb34e01854eba5b0a75396019266517))
+* a Mark as finished box, starting from the reader's own KOReader setting ([fa6379c](https://github.com/ghepting/afterword.koplugin/commit/fa6379cef6eb5a076b729f4a8701d3e2f1bd0584))
+* Pick next, a list of what to read next, and a collection to suggest from ([2841caa](https://github.com/ghepting/afterword.koplugin/commit/2841caa393c1ae3a075b23c3bacbb4130876999c))
+* show Afterword's screen at the end of a book instead of KOReader's popup ([f640376](https://github.com/ghepting/afterword.koplugin/commit/f640376454941ba12b20569820b33dde6744d6c8))
+* the end-of-book screen, with the cover, series, reading figures, a rating, and the next book ([7fe8099](https://github.com/ghepting/afterword.koplugin/commit/7fe8099448de1dfcc44591349b369977d08609e3))
+* the next book in a series, and the figures for how a book went, with tests ([2143640](https://github.com/ghepting/afterword.koplugin/commit/214364032e3bb3003640504232ecebcf4e24a9f2))
+* what to read next, in groups: the series, the author, a chosen collection, recently added, started ([6ccde09](https://github.com/ghepting/afterword.koplugin/commit/6ccde09c7a4a94fbba6b2e6a1ad61d5d7018e0f0))
+
+
+### Bug Fixes
+
+* Afterword is in the Tools list and loads in the file browser too ([681f10b](https://github.com/ghepting/afterword.koplugin/commit/681f10b4db7ea71d387908a8fc63f96c08e2f0e8))
+* more by the author leaves out the book's own series, and the quickstart guide is not suggested ([fb55b4e](https://github.com/ghepting/afterword.koplugin/commit/fb55b4e814964a9c4a084b39854e3af37b13d62b))
