@@ -2,9 +2,11 @@
 -- A plain KOReader widget, built from the stock pieces so it looks like the rest of KOReader and works on any screen.
 --
 --   Screen:new{ title, author, series_text, cover (a blitbuffer or nil), lines = { { label, value } ... }, rating (0-5),
---               on_rate = function(n), next_title, on_next = function(), on_done = function() }
+--               on_rate = function(n), finished (the box's start), on_finished = function(bool),
+--               next_title, on_next = function(), on_done = function() }
 local Blitbuffer = require("ffi/blitbuffer")
 local ButtonTable = require("ui/widget/buttontable")
+local CheckButton = require("ui/widget/checkbutton")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local Device = require("device")
 local FrameContainer = require("ui/widget/container/framecontainer")
@@ -33,6 +35,7 @@ local AfterwordScreen = InputContainer:extend {
     title = nil, author = nil, series_text = nil, cover = nil,
     lines = nil, rating = 0, on_rate = nil,
     next_title = nil, on_next = nil, on_done = nil,
+    finished = false, on_finished = nil, -- the "mark as finished" box: how it starts, and told when it changes
 }
 
 local STAR_ON, STAR_OFF = "\u{2605}", "\u{2606}" -- filled and outline stars
@@ -113,7 +116,18 @@ function AfterwordScreen:init()
         rate_row[#rate_row + 1] = tap
     end
     group[#group + 1] = rate_row
-    group[#group + 1] = VerticalSpan:new { width = Screen:scaleBySize(14) }
+    group[#group + 1] = VerticalSpan:new { width = Screen:scaleBySize(8) }
+
+    -- Whether the book is marked finished when you leave. How it starts is the caller's (the reader's own KOReader setting).
+    self.finish_box = CheckButton:new {
+        text = _("Mark as finished"), checked = self.finished, parent = self, width = inner,
+        callback = function()
+            self.finished = self.finish_box.checked
+            if self.on_finished then self.on_finished(self.finished) end
+        end,
+    }
+    group[#group + 1] = self.finish_box
+    group[#group + 1] = VerticalSpan:new { width = Screen:scaleBySize(10) }
 
     -- What next.
     local rows = {}

@@ -8,6 +8,7 @@ local Series = require("afterword/series")
 local Stats = require("afterword/stats")
 local Store = require("afterword/store")
 local AfterwordScreen = require("afterword/screen")
+local Finish = require("afterword/finish")
 
 local Afterword = WidgetContainer:extend {
     name = "afterword",
@@ -103,6 +104,23 @@ function Afterword:setRating(n)
     end)
 end
 
+-- The reader's book status as KOReader keeps it ("complete", "reading", ...), or nil.
+function Afterword:status()
+    local summary = self.ui.doc_settings and self.ui.doc_settings:readSetting("summary")
+    return summary and summary.status or nil
+end
+
+-- Writes a status the way KOReader's own "mark as finished" does: the book's summary and the book list's copy.
+function Afterword:setStatus(status)
+    local summary = self.ui.doc_settings:readSetting("summary") or {}
+    summary.status = status
+    summary.modified = os.date("%Y-%m-%d", os.time())
+    self.ui.doc_settings:saveSetting("summary", summary)
+    pcall(function()
+        require("ui/widget/booklist").setBookInfoCacheProperty(self.ui.document.file, "status", status)
+    end)
+end
+
 -- Shows the screen and returns true, or returns nil to leave the end of the book to KOReader. `preview`: shown on request, in the
 -- middle of a book (so the quickstart guide is no reason to hold back).
 function Afterword:handleEnd(preview)
@@ -112,11 +130,21 @@ function Afterword:handleEnd(preview)
     end
     if not (self.ui.document and self.ui.document.file) then return nil end
     local info = self:gather()
-    local function close() if self.screen then UIManager:close(self.screen); self.screen = nil end end
+    local was = self:status()
+    local finished = Finish.default(G_reader_settings:isTrue("end_document_auto_mark"), was)
+    -- Leaving the screen applies the box. A preview, which may be shown halfway through a book, never changes the book's status.
+    local function close()
+        if not preview then
+            local status = Finish.status_after(was, finished)
+            if status then self:setStatus(status) end
+        end
+        if self.screen then UIManager:close(self.screen); self.screen = nil end
+    end
     self.screen = AfterwordScreen:new {
         title = info.title, author = info.author, series_text = info.series_text, cover = info.cover,
         lines = info.lines, rating = self:rating(),
         on_rate = function(n) self:setRating(n) end,
+        finished = finished, on_finished = function(checked) finished = checked end,
         next_title = info.next and info.next.title or nil,
         on_next = function()
             close()
