@@ -42,11 +42,11 @@ function Store.library(conn)
     return out
 end
 
--- books(conn) -> { { path, title, authors, series, series_index, keywords, language }, ... } every book KOReader has details of
+-- books(conn) -> { { path, title, authors, series, series_index, keywords, language, description }, ... } every book KOReader has details of
 -- (the whole library, series or not), for suggesting what to read next. keywords is the book's tags, one per line.
 function Store.books(conn)
     local res, n = rows(conn,
-        "SELECT directory, filename, title, authors, series, series_index, keywords, language FROM bookinfo "
+        "SELECT directory, filename, title, authors, series, series_index, keywords, language, description FROM bookinfo "
         .. "WHERE has_meta = 'Y' AND ignore_meta IS NOT 'Y' AND unsupported IS NULL;")
     local out = {}
     for i = 1, n do
@@ -54,7 +54,7 @@ function Store.books(conn)
         out[#out + 1] = {
             path = res[1][i] .. res[2][i], title = res[3][i], authors = res[4][i],
             series = (series and series ~= "") and series or nil, series_index = tonumber(res[6][i]),
-            keywords = res[7][i], language = res[8][i],
+            keywords = res[7][i], language = res[8][i], description = res[9][i],
         }
     end
     return out

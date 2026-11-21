@@ -16,7 +16,14 @@ When you reach the end of a book, Afterword shows one screen: how the book went,
 
 <p align="center">
   <img src="assets/screen.png" width="360" alt="The screen at the end of Career of Evil: cover, series, how long it took, rating, and the next book">
-  <img src="assets/pick-next.png" width="300" alt="The Pick next list, in groups">
+</p>
+
+The list of what to read next opens from that screen, or any time from **Tools › Afterword › What to read next**:
+
+<p align="center">
+  <img src="assets/pick-next.png" width="260" alt="The list, page 1: a spotlight pick with its reasons, something different, and a shelf of books you are part-way through">
+  <img src="assets/pick-next-2.png" width="260" alt="The list, page 2: your collection and recently added books, as shelves of covers">
+  <img src="assets/book-detail.png" width="260" alt="The sheet for one book: cover, author, series, tags, why it was picked, and Start reading">
 </p>
 
 ## What it shows
@@ -26,18 +33,16 @@ When you reach the end of a book, Afterword shows one screen: how the book went,
 - **Your rating:** five stars. Tap one to rate; tap the first star again to clear. It is saved where KOReader's own book status page keeps it.
 - **Mark as finished:** a box that starts the way you already set up KOReader. It is selected when KOReader's "mark a book finished at its end" setting is on, or when the book is already finished. Leaving the screen marks the book finished if it is selected, and puts a finished book back to reading if you clear it.
 - **Next:** the first book after this one in its series that you own and have not finished. Hidden when there is none.
-- **Pick next…:** a list of what to read, in groups, up to three each, never a book you have finished, and each book only once:
-  1. **Next in the series**
-  2. **More by** the author: their other books you have not started (not this book's series, which is the group above)
-  3. **From** a collection you choose (see below)
-  4. **Picked for you:** one unread book that fits your taste, with the tags it matched (see below)
-  5. **Something different:** for when you want the opposite of the book you are on (or, from the file browser, the one you read last): one unread book that shares none of its tags and none you have rated down, and fits the tags you do like
-  6. **Recently added:** the newest books you have not started
-  7. **Pick up where you left off:** books you started and did not finish, with how far through each you are
+- **Pick next…:** a list of what to read, in groups, never a book you have finished, and each book only once. The groups, in the order shown:
+  1. **Next in the series** and **Picked for you** and **Something different** are single picks. The first is a spotlight card with a large cover, the genre tags, a line saying why it was picked, and a **Start reading** button; the others are smaller cards.
+  2. **Pick up where you left off:** books you started and did not finish, as a shelf of covers with how far through each you are.
+  3. **More by** the author, **From** a collection you choose (see below), and **Recently added** are shelves too.
+
+  A shelf is up to five covers across, each with its title and author, and a "Book 3" tag on the cover for a book in a series. Page arrows are KOReader's own. **Tap a book for its sheet:** cover, author, series, language, genre tags, why it was picked, and its description when the book has one, with **Start reading** and **Not now**. The **Start** buttons on the cards skip the sheet.
+
+  Picked for you is one unread book that fits your taste, with the books you liked behind it; Something different is for when you want the opposite of the book you are on (or, from the file browser, the one you read last): one unread book that shares none of its tags and none you have rated down, and fits the tags you do like.
 
 **Nothing is suggested out of order in a series.** A book in a series is only offered as something new when every lower-numbered book of that series you own is finished, so book 3 never appears while book 2 is unread, half read or on hold (a gap in what you own is skipped). It applies to every group, your collection included, except "Pick up where you left off", which is about books you already started. A series book with no number cannot be placed, so it is not offered.
-
-Under each title, in smaller grey text, is the author and, for a book in a series, which one it is: "Adrian Tchaikovsky · Book 3 of Children of Time". A long title is cut with an ellipsis rather than wrapped, so every row starts at the same left edge.
 
 **Picked for you** is worked out on the device from what KOReader already knows. A book you rated 4 or 5 counts for its genre tags, a 3 a little, a 1 or 2 against them; a book you finished without rating counts a little for them, and one you put on hold a little against. An unread book is scored by how many of its tags you have liked, with rare tags counting for more than ones nearly everything has, and books in a language you do not read are left out. It needs at least two books you liked before it will guess, and books with no tags are never offered. Nothing is sent anywhere.
 
