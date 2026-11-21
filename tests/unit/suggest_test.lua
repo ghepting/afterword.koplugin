@@ -84,7 +84,7 @@ T.test("started: books you opened and not finished, most recent first", function
 end)
 T.test("a chosen collection comes in its own order, without finished books", function()
     local g = find(Suggest.groups(ctx({ collection = { name = "To read", paths = { "/done", "/new1", "/mid", "/new3" } } })), "collection")
-    T.eq(paths(g), "/new1 /mid /new3")
+    T.eq(paths(g), "/new1 /new3") -- /mid is half read: it is shown under started instead
     T.eq(g.collection_name, "To read")
 end)
 T.test("groups are shown in order: the series, what you were reading, the author, your collection, then recent", function()
@@ -228,7 +228,7 @@ T.test("a book half read blocks the later ones, but is itself offered under star
             for _, b in ipairs(g.books) do T.eq(b.path ~= "/s6", true) end
         end
     end
-    T.eq(paths(find(groups, "started")), "/s5")
+    T.eq(paths(find(groups, "started")), "/s5 /s3 /mid") -- the history first, then the other half-read books
 end)
 
 T.test("a series book with no number is never offered as something new", function()
