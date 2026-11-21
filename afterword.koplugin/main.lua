@@ -243,7 +243,7 @@ function Afterword:showPicker(info, on_open, opts)
         items[#items + 1] = { text = (heading[g.name] or function() return g.name end)(g), heading = true, callback = function() end }
         for _j, book in ipairs(g.books) do
             items[#items + 1] = {
-                text = book.title, subtitle = Suggest.series_text(book), mandatory = book.note,
+                text = book.title, subtitle = Suggest.byline(book), mandatory = book.note,
                 callback = function() on_open(book.path) end,
             }
         end

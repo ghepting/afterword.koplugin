@@ -48,6 +48,17 @@ function Suggest.series_text(book)
     return book.series
 end
 
+-- The second line under a title: "Colleen Hoover \u{00B7} Book 3 of Series", with whichever part the book has; nil when it has neither.
+function Suggest.byline(book)
+    local authors = tostring(book and book.authors or ""):gsub("\n", ", "):gsub("^%s+", ""):gsub("%s+$", "")
+    local parts = {}
+    if authors ~= "" then parts[#parts + 1] = authors end
+    local series = Suggest.series_text(book)
+    if series then parts[#parts + 1] = series end
+    if #parts == 0 then return nil end
+    return table.concat(parts, " \u{00B7} ")
+end
+
 local function title_of(record, path)
     return record and record.title or tostring(path):match("([^/]+)%.%w+$") or tostring(path)
 end
@@ -80,7 +91,7 @@ function Suggest.groups(ctx)
         local record = by_path[path]
         group[#group + 1] = {
             path = path, title = title_of(record, path), note = note,
-            series = record and record.series, series_index = record and record.series_index,
+            series = record and record.series, series_index = record and record.series_index, authors = record and record.authors,
         }
     end
 

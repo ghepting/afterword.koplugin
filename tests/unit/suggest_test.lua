@@ -228,4 +228,12 @@ T.test("a series book with no number is never offered as something new", functio
     T.eq(paths(find(groups, "recent")), "/n")
 end)
 
+T.test("the line under a title says the author and which book of the series, whichever it has", function()
+    T.eq(Suggest.byline({ authors = "Colleen Hoover", series = "Verity", series_index = 1 }), "Colleen Hoover \u{00B7} Book 1 of Verity")
+    T.eq(Suggest.byline({ authors = "A. One\nB. Two" }), "A. One, B. Two")
+    T.eq(Suggest.byline({ series = "Strike", series_index = 5 }), "Book 5 of Strike")
+    T.eq(Suggest.byline({ title = "Nothing known" }), nil)
+    T.eq(Suggest.byline({ authors = "  " }), nil)
+end)
+
 T.done()
