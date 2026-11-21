@@ -236,27 +236,29 @@ function Afterword:showPicker(info, on_open, opts)
         picked_for_you = function() return _("Picked for you") end,
         something_different = function() return _("Something different") end,
         recently_added = function() return _("Recently added") end,
-        started = function() return _("Pick up where you left off") end,
+        started = function() return _("Keep reading") end,
     }
-    -- A single pick is a card (the first one big); a list of books is a shelf of up to five covers.
+    -- The first two single picks sit side by side at the top; every other group (and any further single pick) is a column of books
+    -- below them, three columns to a row.
     local single = { next_in_series = true, picked_for_you = true, something_different = true }
-    local items, big = {}, false
+    local items, cards, columns = {}, {}, {}
     for _i, g in ipairs(groups) do
-        items[#items + 1] = { text = (heading[g.name] or function() return g.name end)(g), heading = true }
-        if single[g.name] then
+        local name = (heading[g.name] or function() return g.name end)(g)
+        if single[g.name] and #cards < 2 then
             local book = g.books[1]
-            local short = Suggest.explain(g.name, book, g)
-            items[#items + 1] = {
-                kind = big and "card" or "hero", book = book, why = short, button = big and _("Start") or _("Start reading"),
+            cards[#cards + 1] = {
+                heading = name, book = book, why = (Suggest.explain(g.name, book, g)),
+                solid = #cards == 0, button = #cards == 0 and _("Start reading") or _("Start"),
             }
-            big = true
         else
-            for first = 1, #g.books, 5 do
-                local row = {}
-                for i = first, math.min(first + 4, #g.books) do row[#row + 1] = g.books[i] end
-                items[#items + 1] = { kind = "shelf", books = row, progress = g.name == "started" }
-            end
+            columns[#columns + 1] = { heading = name, books = g.books, progress = g.name == "started" }
         end
+    end
+    if #cards > 0 then items[#items + 1] = { kind = "picks", cards = cards } end
+    for first = 1, #columns, 3 do
+        local row = {}
+        for i = first, math.min(first + 2, #columns) do row[#row + 1] = columns[i] end
+        items[#items + 1] = { kind = "lists", columns = row }
     end
     if #items == 0 then
         UIManager:show(require("ui/widget/infomessage"):new { text = _("Nothing to suggest yet.") })

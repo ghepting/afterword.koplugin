@@ -1,15 +1,15 @@
 -- The list on the What to read next / Pick next screen: KOReader's own Menu (title bar, page arrows, paging) with its rows drawn
 -- here. A row is one of:
 --
---   { heading = true, text }                          a group's name
---   { kind = "hero", book, why, button }              the first single pick: a big cover, the details, a Start reading button
---   { kind = "card", book, why, button }              any other single pick: a smaller cover and card
---   { kind = "shelf", books, progress = bool }        up to four covers across, each with its title, its author, and a quiet grey
---                                                     line (which book of a series it is, how far through it you are)
+--   { kind = "picks", cards = { { heading, book, why, button, solid }, ... } }
+--       up to two single picks side by side, each under its heading: a big cover, the details, a Start button
+--   { kind = "lists", columns = { { heading, books, progress = bool }, ... } }
+--       up to three groups side by side, each a heading over rows of a small cover, the title, the author and a quiet grey line
+--       (which book of a series it is, how far through it you are, and a thin bar for what you are reading)
 --
--- A book is { path, title, authors, series, series_index, percent, ... } as Suggest makes it. Tapping a cover, or a Start button, calls
--- menu.on_open(book). Covers are read from KOReader's book-info cache when a row is drawn, so only the page on
--- screen costs anything.
+-- The covers of the picks are as big as the screen leaves room for, so the same layout fits portrait and landscape. A book is
+-- { path, title, authors, series, series_index, percent, ... } as Suggest makes it. Tapping a book calls menu.on_open(book). Covers are
+-- read from KOReader's book-info cache when a row is drawn, so only the page on screen costs anything.
 local Blitbuffer = require("ffi/blitbuffer")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local Device = require("device")
@@ -36,7 +36,6 @@ local _ = require("gettext")
 
 local Screen = Device.screen
 local GREY = Blitbuffer.COLOR_DARK_GRAY
-local SHELF = 4 -- covers across a shelf
 
 local function s(n) return Screen:scaleBySize(n) end
 
@@ -47,21 +46,19 @@ local function line_height(f, bold)
 end
 
 -- Sizes for a list `width` wide. A cover is always two thirds as wide as it is tall.
-local function dims(width, font_size)
-    local d = { width = width, pad = s(22), gap = s(14), vgap = s(8), caption_gap = s(8) }
-    d.shelf_w = math.floor(width * 0.19)
-    d.shelf_gap = math.floor((width - 2 * d.pad - SHELF * (d.shelf_w + 2 * Size.border.thin)) / (SHELF - 1)) -- the rest of the width, between the covers
-    d.shelf_h = math.floor(d.shelf_w * 1.5)
-    d.hero_w = math.floor(width * 0.27)
-    d.hero_h = math.floor(d.hero_w * 1.5)
-    d.card_w = math.floor(width * 0.15)
-    d.card_h = math.floor(d.card_w * 1.5)
-    d.f_title = face(12)
-    d.f_author = face(11)
-    d.f_meta = face(11)
-    d.f_heading = face(14)
-    d.lh_title, d.lh_author, d.lh_meta = line_height(d.f_title), line_height(d.f_author), line_height(d.f_meta)
+local function dims(width)
+    local d = { width = width, pad = s(22), col_gap = s(18), section_gap = s(14), thumb_gap = s(10), row_gap = s(8) }
+    d.inner = width - 2 * d.pad
+    d.card_w = math.floor((d.inner - d.col_gap) / 2) -- a pick's width
+    d.col_w = math.floor((d.inner - 2 * d.col_gap) / 3) -- a list's width
+    d.thumb_w = math.min(s(48), math.floor(d.col_w * 0.3)) -- a list's cover is the same size in portrait and landscape: the height is what is scarce
+    d.thumb_h = math.floor(d.thumb_w * 1.5)
+    d.text_w = d.col_w - d.thumb_w - d.thumb_gap
+    d.f_title, d.f_author, d.f_meta, d.f_heading = face(12), face(11), face(11), face(14)
+    d.lh_author, d.lh_meta = line_height(d.f_author), line_height(d.f_meta)
     d.lh_heading = line_height(d.f_heading, true)
+    d.head_h = d.lh_heading + s(8) -- a heading and the space under it
+    d.bar_h = s(3)
     return d
 end
 
@@ -104,25 +101,6 @@ local function shelf_meta(book, progress)
     return #parts > 0 and table.concat(parts, " \u{00B7} ") or nil
 end
 
--- Genre pills side by side, as many as fit in `max_width` (up to `limit`).
-local function chips(tags, max_width, limit)
-    local row = HorizontalGroup:new { align = "center" }
-    local used = 0
-    for i, tag in ipairs(tags or {}) do
-        if i > (limit or 3) then break end
-        local pill = FrameContainer:new {
-            bordersize = Size.border.thin, radius = s(10), margin = 0, padding = s(2), padding_left = s(8), padding_right = s(8),
-            TextWidget:new { text = tag, face = face(12) },
-        }
-        local w = pill:getSize().w + s(6)
-        if used + w > max_width then break end
-        row[#row + 1] = pill
-        row[#row + 1] = HorizontalSpan:new { width = s(6) }
-        used = used + w
-    end
-    return #row > 0 and row or nil
-end
-
 local function button(text, solid)
     return FrameContainer:new {
         background = solid and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE, bordersize = Size.border.thin, radius = s(6),
@@ -146,129 +124,131 @@ end
 
 local PickRow = InputContainer:extend {}
 
+local function authors_of(book) return book.authors and (tostring(book.authors):gsub("\n", ", ")) or "" end
+
 function PickRow:init()
     local entry = self.entry
     self.ges_events = { TapSelect = { GestureRange:new { ges = "tap", range = self.dimen } } }
-    if entry.heading then return self:buildHeading() end
-    if entry.kind == "shelf" then return self:buildShelf() end
-    return self:buildCard()
+    local group = VerticalGroup:new { align = "left" }
+    if not entry.at_top then group[#group + 1] = VerticalSpan:new { width = self.d.section_gap } end
+    group[#group + 1] = entry.kind == "picks" and self:buildPicks() or self:buildLists()
+    self[1] = LeftContainer:new { dimen = Geom:new { w = self.d.width, h = self.dimen.h }, group }
 end
 
-function PickRow:buildHeading()
-    local entry, d = self.entry, self.d
-    local name = TextWidget:new { text = entry.text, face = d.f_heading, bold = true, max_width = d.width - 2 * d.pad, truncate_with_ellipsis = true }
-    self[1] = VerticalGroup:new {
+local function heading(text, d, width)
+    return TextWidget:new { text = text, face = d.f_heading, bold = true, max_width = width, truncate_with_ellipsis = true }
+end
+
+-- A pick: the cover on the left, then the title, author, series, why it was picked, and a Start button at the bottom. What does not fit
+-- beside the cover is left out, the least important first.
+function PickRow:buildCard(card)
+    local d = self.d
+    local book = card.book
+    local image = cover(book.path, book.title, d.pick_w, d.pick_h)
+    local text_w = d.card_w - image:getSize().w - d.thumb_gap
+    local btn = button(card.button or _("Start reading"), card.solid)
+    local room = d.pick_h - btn:getSize().h - s(6)
+
+    local function parts(why_lines, with_series)
+        local list = { { capped_text(book.title or "?", Font:getFace("tfont", 16), text_w, 3, true), 0 } }
+        local author = authors_of(book)
+        if author ~= "" then list[#list + 1] = { TextWidget:new { text = author, face = face(13), max_width = text_w, truncate_with_ellipsis = true }, s(2) } end
+        local series = with_series and Suggest.series_text(book)
+        if series then list[#list + 1] = { TextWidget:new { text = series, face = face(11), fgcolor = GREY, max_width = text_w, truncate_with_ellipsis = true }, s(2) } end
+        if why_lines > 0 and card.why and card.why ~= "" then list[#list + 1] = { capped_text(card.why, face(12), text_w, why_lines), s(6) } end
+        local h = 0
+        for _i, p in ipairs(list) do h = h + p[1]:getSize().h + p[2] end
+        return list, h
+    end
+    local list, used
+    for _i, try in ipairs({ { 4, true }, { 3, true }, { 2, true }, { 2, false }, { 1, false }, { 0, false } }) do
+        list, used = parts(try[1], try[2])
+        if used <= room then break end
+    end
+    local col = VerticalGroup:new { align = "left" }
+    for _i, p in ipairs(list) do
+        if p[2] > 0 then col[#col + 1] = VerticalSpan:new { width = p[2] } end
+        col[#col + 1] = p[1]
+    end
+    col[#col + 1] = VerticalSpan:new { width = math.max(s(6), d.pick_h - used - btn:getSize().h) }
+    col[#col + 1] = btn
+    return VerticalGroup:new {
         align = "left",
-        VerticalSpan:new { width = entry.at_top and 0 or d.heading_gap },
-        HorizontalGroup:new { HorizontalSpan:new { width = d.pad }, name },
+        heading(card.heading, d, d.card_w),
+        VerticalSpan:new { width = s(8) },
+        HorizontalGroup:new { align = "top", image, HorizontalSpan:new { width = d.thumb_gap }, col },
     }
 end
 
--- A hero or a compact card: the cover on the left, the details on the right, and a Start button at the bottom of them. What does not
--- fit beside the cover is left out, the least important first: the description, then the tags, then the series.
-function PickRow:buildCard()
-    local entry, d = self.entry, self.d
-    local book, hero = entry.book, entry.kind == "hero"
-    local cw, ch = hero and d.hero_w or d.card_w, hero and d.hero_h or d.card_h
-    local image = cover(book.path, book.title, cw, ch)
-    local text_w = d.width - 2 * d.pad - image:getSize().w - d.gap
-    local btn = button(entry.button or _("Start reading"), hero)
-    self.start_button = btn
-    local room = ch - btn:getSize().h - s(8) -- what the details may use above the button
-
-    local parts = {} -- { key, widget, gap } in the order shown
-    local title_face = Font:getFace("tfont", hero and 22 or 17)
-    parts[#parts + 1] = { "title", capped_text(book.title or "?", title_face, text_w, 2, true), 0 }
-    if book.authors and book.authors ~= "" then
-        parts[#parts + 1] = { "author", TextWidget:new { text = (tostring(book.authors):gsub("\n", ", ")), face = face(hero and 16 or 14), max_width = text_w, truncate_with_ellipsis = true }, s(2) }
+function PickRow:buildPicks()
+    local d = self.d
+    local row = HorizontalGroup:new { align = "top", HorizontalSpan:new { width = d.pad } }
+    for i, card in ipairs(self.entry.cards) do
+        local built = self:buildCard(card)
+        row[#row + 1] = built
+        if i < #self.entry.cards then row[#row + 1] = HorizontalSpan:new { width = d.card_w - built:getSize().w + d.col_gap } end
     end
-    local series = Suggest.series_text(book)
-    if series then
-        parts[#parts + 1] = { "series", TextWidget:new { text = series, face = face(hero and 14 or 12), fgcolor = GREY, max_width = text_w, truncate_with_ellipsis = true }, s(2) }
-    end
-    if hero then
-        local pills = chips(book.tags, text_w, 3)
-        if pills then parts[#parts + 1] = { "chips", pills, s(6) } end
-    end
-    if entry.why and entry.why ~= "" then
-        parts[#parts + 1] = { "why", capped_text(entry.why, face(hero and 14 or 13), text_w, 2), s(6) }
-    end
-    if hero and book.description and book.description ~= "" then
-        local plain = require("util").htmlToPlainTextIfHtml(book.description):gsub("%s+", " ")
-        parts[#parts + 1] = { "description", capped_text(plain, face(13), text_w, 2, false, GREY), s(6) }
-    end
-
-    local function total()
-        local h = 0
-        for _i, part in ipairs(parts) do h = h + part[2]:getSize().h + part[3] end
-        return h
-    end
-    for _i, key in ipairs({ "description", "chips", "series" }) do
-        if total() <= room then break end
-        for i, part in ipairs(parts) do
-            if part[1] == key then table.remove(parts, i); break end
-        end
-    end
-
-    local col = VerticalGroup:new { align = "left" }
-    local used = 0
-    for _i, part in ipairs(parts) do
-        if part[3] > 0 then col[#col + 1] = VerticalSpan:new { width = part[3] } end
-        col[#col + 1] = part[2]
-        used = used + part[2]:getSize().h + part[3]
-    end
-    col[#col + 1] = VerticalSpan:new { width = math.max(s(6), ch - used - btn:getSize().h) }
-    col[#col + 1] = btn
-    local row = HorizontalGroup:new { align = "top", HorizontalSpan:new { width = d.pad }, image, HorizontalSpan:new { width = d.gap }, col }
-    self[1] = LeftContainer:new { dimen = Geom:new { w = d.width, h = self.dimen.h }, row }
+    return row
 end
 
--- Up to four covers across, each over its title, its author and a quiet grey line. The titles are as tall as they need to be, and the
--- authors line up across the row.
-function PickRow:buildShelf()
-    local entry, d = self.entry, self.d
-    local row = HorizontalGroup:new { align = "top", HorizontalSpan:new { width = d.pad } }
-    for i, book in ipairs(entry.books) do
-        local cell = VerticalGroup:new { align = "left" }
-        cell[#cell + 1] = cover(book.path, book.title, d.shelf_w, d.shelf_h)
-        if entry.progress then
-            local percent = math.max(0, math.min(100, tonumber(book.percent) or 0))
-            local bar_w, bar_h = d.shelf_w, s(3)
-            cell[#cell + 1] = VerticalSpan:new { width = s(6) }
-            cell[#cell + 1] = OverlapGroup:new {
-                dimen = Geom:new { w = bar_w, h = bar_h },
-                LineWidget:new { dimen = Geom:new { w = bar_w, h = bar_h }, background = Blitbuffer.COLOR_GRAY_D },
-                LineWidget:new { dimen = Geom:new { w = math.max(1, math.floor(bar_w * percent / 100)), h = bar_h }, background = Blitbuffer.COLOR_BLACK },
-            }
-        end
-        cell[#cell + 1] = VerticalSpan:new { width = d.caption_gap }
-        local title = capped_text(book.title or "?", d.f_title, d.shelf_w, 2)
-        cell[#cell + 1] = title
-        local author = book.authors and tostring(book.authors):gsub("\n", ", ") or ""
-        if author ~= "" then
-            cell[#cell + 1] = TextWidget:new { text = author, face = d.f_author, fgcolor = GREY, max_width = d.shelf_w, truncate_with_ellipsis = true }
-        end
-        local meta = shelf_meta(book, entry.progress)
-        if meta then
-            cell[#cell + 1] = TextWidget:new { text = meta, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.shelf_w, truncate_with_ellipsis = true }
-        end
-        row[#row + 1] = cell
-        if i < #entry.books then row[#row + 1] = HorizontalSpan:new { width = d.shelf_gap } end
+-- What a list's text under a book is made of, top to bottom: the title (two lines at most), the author, a grey line, a thin bar.
+local function list_text(book, progress, d)
+    local col = VerticalGroup:new { align = "left" }
+    col[#col + 1] = capped_text(book.title or "?", d.f_title, d.text_w, 2)
+    local author = authors_of(book)
+    if author ~= "" then col[#col + 1] = TextWidget:new { text = author, face = d.f_author, fgcolor = GREY, max_width = d.text_w, truncate_with_ellipsis = true } end
+    local meta = shelf_meta(book, progress)
+    if meta then col[#col + 1] = TextWidget:new { text = meta, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true } end
+    if progress then
+        local percent = math.max(0, math.min(100, tonumber(book.percent) or 0))
+        col[#col + 1] = VerticalSpan:new { width = s(4) }
+        col[#col + 1] = OverlapGroup:new {
+            dimen = Geom:new { w = d.text_w, h = d.bar_h },
+            LineWidget:new { dimen = Geom:new { w = d.text_w, h = d.bar_h }, background = Blitbuffer.COLOR_GRAY_D },
+            LineWidget:new { dimen = Geom:new { w = math.max(1, math.floor(d.text_w * percent / 100)), h = d.bar_h }, background = Blitbuffer.COLOR_BLACK },
+        }
     end
-    self[1] = LeftContainer:new { dimen = Geom:new { w = d.width, h = self.dimen.h }, row }
+    return col
+end
+
+function PickRow:buildLists()
+    local d, entry = self.d, self.entry
+    local row = HorizontalGroup:new { align = "top", HorizontalSpan:new { width = d.pad } }
+    for i, column in ipairs(entry.columns) do
+        local col = VerticalGroup:new { align = "left" }
+        col[#col + 1] = heading(column.heading, d, d.col_w)
+        col[#col + 1] = VerticalSpan:new { width = s(8) }
+        for _j, book in ipairs(column.books) do
+            local text = list_text(book, column.progress, d)
+            local top = math.max(0, math.floor((entry.row_h - text:getSize().h) / 2))
+            local line = HorizontalGroup:new {
+                align = "top",
+                cover(book.path, book.title, d.thumb_w, d.thumb_h),
+                HorizontalSpan:new { width = d.thumb_gap },
+                VerticalGroup:new { align = "left", VerticalSpan:new { width = top }, text },
+            }
+            col[#col + 1] = line
+            col[#col + 1] = VerticalSpan:new { width = math.max(0, entry.row_h - line:getSize().h) + d.row_gap }
+        end
+        row[#row + 1] = col
+        if i < #entry.columns then row[#row + 1] = HorizontalSpan:new { width = d.col_gap } end
+    end
+    return row
 end
 
 function PickRow:onTapSelect(arg, ges)
     local entry, menu, d = self.entry, self.menu, self.d
-    if entry.heading then return true end
-    if entry.kind == "shelf" then
-        local x = ges.pos.x - self.dimen.x - d.pad
-        local index = math.floor(x / (d.shelf_w + d.shelf_gap)) + 1
-        local book = entry.books[math.max(1, math.min(index, #entry.books))]
-        if x >= 0 and book then menu.on_open(book) end
+    local x = ges.pos.x - self.dimen.x - d.pad
+    if x < 0 then return true end
+    if entry.kind == "picks" then
+        local card = entry.cards[math.floor(x / (d.card_w + d.col_gap)) + 1]
+        if card then menu.on_open(card.book) end
         return true
     end
-    menu.on_open(entry.book)
+    local column = entry.columns[math.floor(x / (d.col_w + d.col_gap)) + 1]
+    local y = ges.pos.y - self.dimen.y - (entry.at_top and 0 or d.section_gap) - d.head_h
+    local book = column and y >= 0 and column.books[math.floor(y / (entry.row_h + d.row_gap)) + 1]
+    if book then menu.on_open(book) end
     return true
 end
 
@@ -279,64 +259,69 @@ function PickRow:getFocusIndicatorRegion() return self.dimen end
 
 local PickMenu = Menu:extend {}
 
--- How tall each row is, and which rows fit on which page: Menu's own rule, with this module's row heights.
+-- How tall each row is, and which rows fit on which page: Menu's own rule, with this module's row heights. The picks take whatever
+-- height the lists leave, so on one screen there is a big spotlight, and in landscape the same layout simply has a wider, shorter one.
 function PickMenu:setupItemHeights()
-    local d = dims(self.inner_dimen.w, self.font_size)
-    d.heading_gap = math.floor(d.lh_heading * 1.1) -- white space above a group's name, except at the top of a page
+    local d = dims(self.inner_dimen.w)
     self.dims = d
-    -- A shelf's captions stack with no gaps: each book takes only the lines it has, and the row is as tall as its tallest caption.
-    local function measure_shelf(item)
-        if item.measured_width == d.shelf_w then return end
-        local tallest = 0
-        for _i, book in ipairs(item.books) do
-            local title = capped_text(book.title or "?", d.f_title, d.shelf_w, 2)
-            local h = title:getSize().h
-            title:free()
-            local author = book.authors and tostring(book.authors):gsub("\n", ", ") or ""
-            if author ~= "" then h = h + d.lh_author end
-            if shelf_meta(book, item.progress) then h = h + d.lh_meta end
-            tallest = math.max(tallest, h)
+    -- how tall a book's row in a list needs to be: the tallest of any list's (every row in the screen shares it, so the columns line up)
+    local row_h = d.thumb_h
+    for _i, item in ipairs(self.item_table) do
+        if item.kind == "lists" then
+            for _j, column in ipairs(item.columns) do
+                column.all = column.all or column.books
+                for _k, book in ipairs(column.all) do
+                    local text = list_text(book, column.progress, d)
+                    row_h = math.max(row_h, text:getSize().h)
+                    text:free()
+                end
+            end
         end
-        item.caption_h, item.measured_width = tallest, d.shelf_w
     end
-    local function height(item, at_top)
-        if item.heading then
-            item.at_top = at_top
-            return d.lh_heading + s(8) + (at_top and 0 or d.heading_gap)
-        elseif item.kind == "hero" then
-            return d.hero_h + 2 * d.vgap
-        elseif item.kind == "card" then
-            return d.card_h + 2 * d.vgap
+    -- how many rows a list may have: the picks above need a cover worth looking at, so on a short (landscape) screen the lists are shorter
+    local pick_min = s(140)
+    local fit = math.floor((self.available_height - 2 * d.section_gap - 2 * d.head_h - pick_min - s(6) + d.row_gap) / (row_h + d.row_gap))
+    local rows = math.max(2, fit)
+    local first_lists
+    for i, item in ipairs(self.item_table) do
+        item.at_top = i == 1
+        if item.kind == "lists" then
+            local count = 0
+            for _j, column in ipairs(item.columns) do
+                column.books = {}
+                for k = 1, math.min(rows, #column.all) do column.books[k] = column.all[k] end
+                count = math.max(count, #column.books)
+            end
+            item.row_h = row_h
+            item.body_h = d.head_h + count * (row_h + d.row_gap) - d.row_gap
+            first_lists = first_lists or item
         end
-        -- a shelf: the covers, then (for what you are reading) a thin bar, then the title, the author and a grey line
-        measure_shelf(item)
-        local bar = item.progress and (s(6) + s(3)) or 0
-        return d.vgap + d.shelf_h + bar + d.caption_gap + item.caption_h + d.vgap
+    end
+    -- the picks: as tall as is left after one row of lists on the same screen, and no wider than a pick's card has room for
+    local fixed = first_lists and (d.section_gap + first_lists.body_h) or 0
+    local want = self.available_height - fixed - d.section_gap - d.head_h - s(6)
+    d.pick_h = math.max(s(96), math.min(want, math.floor(d.card_w * 0.5 * 1.5)))
+    d.pick_w = math.floor(d.pick_h / 1.5)
+    local function height(item)
+        local top = item.at_top and 0 or d.section_gap
+        if item.kind == "picks" then return top + d.head_h + d.pick_h end
+        return top + item.body_h
     end
     self.page_items = {}
     local items, used = {}, 0
     for i, item in ipairs(self.item_table) do
-        item.height = height(item, i == 1)
-        if used + item.height <= self.available_height then
-            table.insert(items, i)
-            used = used + item.height
-        else
-            -- a group's name is never left at the bottom of a page, away from its books
-            local last = items[#items]
-            local carry = last and self.item_table[last].heading and table.remove(items) or nil
+        item.at_top = #items == 0
+        item.height = height(item)
+        if used + item.height > self.available_height and #items > 0 then
             table.insert(self.page_items, items)
             items, used = {}, 0
-            if carry then
-                self.item_table[carry].height = height(self.item_table[carry], true)
-                table.insert(items, carry)
-                used = self.item_table[carry].height
-            end
-            item.height = height(item, #items == 0) -- a heading that starts a page needs no gap above
-            table.insert(items, i)
-            used = used + item.height
+            item.at_top = true
+            item.height = height(item)
         end
-        if i == #self.item_table then table.insert(self.page_items, items) end
+        table.insert(items, i)
+        used = used + item.height
     end
+    table.insert(self.page_items, items)
 end
 
 -- Menu:updateItems with this module's rows in place of MenuItem.
