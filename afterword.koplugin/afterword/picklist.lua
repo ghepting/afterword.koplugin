@@ -16,8 +16,10 @@ local Size = require("ui/size")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
+local VerticalSpan = require("ui/widget/verticalspan")
 
 local GREY = Blitbuffer.COLOR_DARK_GRAY
+local HAIRLINE = Blitbuffer.COLOR_GRAY -- between books; lighter than the text so it separates without shouting
 local INDENT = 0.6 -- of the side padding, extra, for a book under its group's name
 
 -- The three faces a row uses, from the menu's font size.
@@ -49,25 +51,37 @@ function PickRow:init()
     local gap = Size.padding.large
     local text_width = width - 2 * pad - indent - (note and (note:getSize().w + gap) or 0)
 
+    local linesize = self.menu.linesize
+    if entry.heading then
+        -- A group's name: black and bold, space above it (none at the very top) and no rule, so groups are told apart by white space.
+        local name = TextWidget:new { text = entry.text, face = f.heading, bold = true, max_width = width - 2 * pad, truncate_with_ellipsis = true }
+        self[1] = VerticalGroup:new {
+            align = "left",
+            VerticalSpan:new { width = (self.heading_gap and not entry.at_top) and self.heading_gap or 0 },
+            HorizontalGroup:new { HorizontalSpan:new { width = pad }, name },
+        }
+        return
+    end
+
     local text = VerticalGroup:new { align = "left" }
-    table.insert(text, TextWidget:new {
-        text = entry.text, face = entry.heading and f.heading or f.title, bold = entry.heading or false,
-        fgcolor = entry.heading and GREY or nil, max_width = text_width, truncate_with_ellipsis = true,
-    })
+    table.insert(text, TextWidget:new { text = entry.text, face = f.title, max_width = text_width, truncate_with_ellipsis = true })
     if entry.subtitle then
         table.insert(text, TextWidget:new { text = entry.subtitle, face = f.series, fgcolor = GREY, max_width = text_width, truncate_with_ellipsis = true })
     end
-
     local row = HorizontalGroup:new { align = "center", HorizontalSpan:new { width = pad + indent }, text }
     if note then
         table.insert(row, HorizontalSpan:new { width = math.max(gap, text_width - text:getSize().w + gap) })
         table.insert(row, note)
     end
-    local linesize = self.menu.linesize
+    -- A hairline under a book, inset to line up with the text, except under the last one of a group.
+    local rule = entry.last and VerticalSpan:new { width = linesize } or HorizontalGroup:new {
+        HorizontalSpan:new { width = pad + indent },
+        LineWidget:new { dimen = Geom:new { w = width - 2 * pad - indent, h = linesize }, background = HAIRLINE },
+    }
     self[1] = VerticalGroup:new {
         align = "left",
         LeftContainer:new { dimen = Geom:new { w = width, h = self.dimen.h - linesize }, row }, -- left, and centred up and down
-        LineWidget:new { dimen = Geom:new { w = width, h = linesize }, background = self.menu.line_color or Blitbuffer.COLOR_DARK_GRAY },
+        rule,
     }
 end
 
@@ -92,27 +106,35 @@ function PickMenu:setupItemHeights()
     local f = faces(self.font_size)
     local title_h, series_h, heading_h = line_height(f.title), line_height(f.series), line_height(f.heading)
     local vertical = 2 * Size.span.vertical_default + self.linesize
+    self.heading_gap = math.floor(heading_h * 0.5) -- white space above a group's name, except at the top of a page
+    local function height(item, at_top)
+        if item.heading then
+            item.at_top = at_top
+            return heading_h + Size.span.vertical_default + (at_top and 0 or self.heading_gap)
+        end
+        return title_h + (item.subtitle and series_h or 0) + vertical
+    end
     self.page_items = {}
     local items, used = {}, 0
     for i, item in ipairs(self.item_table) do
-        if item.heading then
-            item.height = heading_h + vertical
-        else
-            item.height = title_h + (item.subtitle and series_h or 0) + vertical
-        end
-        used = used + item.height
-        if used <= self.available_height then
+        item.height = height(item, i == 1)
+        if used + item.height <= self.available_height then
             table.insert(items, i)
+            used = used + item.height
         else
             -- a group's name is never left at the bottom of a page, away from its books
             local last = items[#items]
             local carry = last and self.item_table[last].heading and table.remove(items) or nil
             table.insert(self.page_items, items)
+            items, used = {}, 0
             if carry then
-                items, used = { carry, i }, self.item_table[carry].height + item.height
-            else
-                items, used = { i }, item.height
+                self.item_table[carry].height = height(self.item_table[carry], true)
+                table.insert(items, carry)
+                used = self.item_table[carry].height
             end
+            item.height = height(item, #items == 0) -- a heading that starts a page needs no gap above
+            table.insert(items, i)
+            used = used + item.height
         end
         if i == #self.item_table then table.insert(self.page_items, items) end
     end
@@ -134,7 +156,7 @@ function PickMenu:updateItems(select_number, no_recalculate_dimen)
         if index == self.itemnumber then select_number = idx end
         local dimen = self.item_dimen:copy()
         dimen.h = item.height
-        local row = PickRow:new { entry = item, menu = self, dimen = dimen, font_size = self.font_size }
+        local row = PickRow:new { entry = item, menu = self, dimen = dimen, font_size = self.font_size, heading_gap = self.heading_gap }
         table.insert(self.item_group, row)
         table.insert(self.layout, { row })
     end

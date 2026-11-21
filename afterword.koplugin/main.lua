@@ -240,13 +240,16 @@ function Afterword:showPicker(info, on_open, opts)
     }
     local items = {}
     for _i, g in ipairs(groups) do
-        items[#items + 1] = { text = (heading[g.name] or function() return g.name end)(g), heading = true, callback = function() end }
+        items[#items + 1] = {
+            text = (heading[g.name] or function() return g.name end)(g), heading = true, callback = function() end,
+        }
         for _j, book in ipairs(g.books) do
             items[#items + 1] = {
                 text = book.title, subtitle = Suggest.byline(book), mandatory = book.note,
                 callback = function() on_open(book.path) end,
             }
         end
+        items[#items].last = true -- the row after it is the next group, so it takes no rule
     end
     if #items == 0 then
         UIManager:show(require("ui/widget/infomessage"):new { text = _("Nothing to suggest yet.") })
