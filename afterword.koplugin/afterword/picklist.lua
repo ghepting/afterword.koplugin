@@ -7,8 +7,8 @@
 --   { kind = "shelf", books, progress = bool }        up to four covers across, each with its title, its author, and a quiet grey
 --                                                     line (which book of a series it is, how far through it you are)
 --
--- A book is { path, title, authors, series, series_index, percent, ... } as Suggest makes it. Tapping a book calls menu.on_detail(book);
--- the Start buttons call menu.on_open(book). Covers are read from KOReader's book-info cache when a row is drawn, so only the page on
+-- A book is { path, title, authors, series, series_index, percent, ... } as Suggest makes it. Tapping a cover, or a Start button, calls
+-- menu.on_open(book). Covers are read from KOReader's book-info cache when a row is drawn, so only the page on
 -- screen costs anything.
 local Blitbuffer = require("ffi/blitbuffer")
 local CenterContainer = require("ui/widget/container/centercontainer")
@@ -265,15 +265,10 @@ function PickRow:onTapSelect(arg, ges)
         local x = ges.pos.x - self.dimen.x - d.pad
         local index = math.floor(x / (d.shelf_w + d.shelf_gap)) + 1
         local book = entry.books[math.max(1, math.min(index, #entry.books))]
-        if x >= 0 and book then menu.on_detail(book) end
+        if x >= 0 and book then menu.on_open(book) end
         return true
     end
-    local btn = self.start_button
-    if btn and btn.dimen and ges.pos:intersectWith(btn.dimen) then
-        menu.on_open(entry.book)
-    else
-        menu.on_detail(entry.book)
-    end
+    menu.on_open(entry.book)
     return true
 end
 
@@ -372,9 +367,5 @@ function PickMenu:updateItems(select_number, no_recalculate_dimen)
     end)
 end
 
--- Pieces the detail sheet shares with the list, so the two look alike.
-PickMenu.cover = cover
-PickMenu.chips = chips
-PickMenu.button = button
 
 return PickMenu

@@ -23,7 +23,6 @@ The list of what to read next opens from that screen, or any time from **Tools â
 <p align="center">
   <img src="assets/pick-next.png" width="260" alt="The list, page 1: a spotlight pick with its reasons, and something different">
   <img src="assets/pick-next-2.png" width="260" alt="The list, page 2: books you are part-way through, and your collection, as shelves of covers">
-  <img src="assets/book-detail.png" width="260" alt="The sheet for one book: cover, author, series, tags, why it was picked, and Start reading">
 </p>
 
 ## What it shows

@@ -240,19 +240,17 @@ function Afterword:showPicker(info, on_open, opts)
     }
     -- A single pick is a card (the first one big); a list of books is a shelf of up to five covers.
     local single = { next_in_series = true, picked_for_you = true, something_different = true }
-    local items, longer, big = {}, {}, false
+    local items, big = {}, false
     for _i, g in ipairs(groups) do
         items[#items + 1] = { text = (heading[g.name] or function() return g.name end)(g), heading = true }
         if single[g.name] then
             local book = g.books[1]
-            local short, long = Suggest.explain(g.name, book, g)
-            longer[book.path] = long
+            local short = Suggest.explain(g.name, book, g)
             items[#items + 1] = {
                 kind = big and "card" or "hero", book = book, why = short, button = big and _("Start") or _("Start reading"),
             }
             big = true
         else
-            for _j, book in ipairs(g.books) do longer[book.path] = select(2, Suggest.explain(g.name, book, g)) end
             for first = 1, #g.books, 5 do
                 local row = {}
                 for i = first, math.min(first + 4, #g.books) do row[#row + 1] = g.books[i] end
@@ -270,27 +268,10 @@ function Afterword:showPicker(info, on_open, opts)
         is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
         close_callback = function() UIManager:close(menu) end,
         on_open = function(book) on_open(book.path) end,
-        on_detail = function(book)
-            self:showDetail(book, longer[book.path], function() on_open(book.path) end)
-        end,
     }
     self.picker = menu
     UIManager:show(menu)
     return menu
-end
-
--- The sheet for one book. Start reading opens it; Not now (or tapping outside) goes back to the list.
-function Afterword:showDetail(book, why, start)
-    if self.detail then UIManager:close(self.detail) end
-    local function close()
-        if self.detail then UIManager:close(self.detail); self.detail = nil end
-    end
-    self.detail = require("afterword/detail"):new {
-        book = book, why = why,
-        on_open = function() close(); start() end,
-        on_close = close,
-    }
-    UIManager:show(self.detail)
 end
 
 -- Opens a book from wherever the person is: the reader switches documents, the file browser opens the reader.
