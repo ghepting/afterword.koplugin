@@ -35,6 +35,8 @@ When you reach the end of a book, Afterword shows one screen: how the book went,
   6. **Recently added:** the newest books you have not started
   7. **Pick up where you left off:** books you started and did not finish, with how far through each you are
 
+A book that belongs to a series says which one it is, like "(Book 3 of Children of Time)", and a long title wraps onto a second line.
+
 **Picked for you** is worked out on the device from what KOReader already knows. A book you rated 4 or 5 counts for its genre tags, a 3 a little, a 1 or 2 against them; a book you finished without rating counts a little for them, and one you put on hold a little against. An unread book is scored by how many of its tags you have liked, with rare tags counting for more than ones nearly everything has, and books in a language you do not read are left out. It needs at least two books you liked before it will guess, and books with no tags are never offered. Nothing is sent anywhere.
 
 The screenshots are from the KOReader desktop emulator, with reading numbers made up for the picture.

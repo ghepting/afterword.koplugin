@@ -14,6 +14,8 @@
 --
 -- groups(ctx) -> { { id, name, books = { { path, title, note }, ... } }, ... } with a group left out when it has no books. A book
 -- appears once, in the first group that wants it. A book you have finished is never offered.
+local _ = require("gettext")
+local T = require("ffi/util").template
 local Series = require("afterword/series")
 local Taste = require("afterword/taste")
 
@@ -37,6 +39,14 @@ local function shares_author(a, b)
     return false
 end
 
+-- "Book 3 of Strike" for a numbered book in a series, "Strike" for one without a number, nil for a book in none.
+function Suggest.series_text(book)
+    if not book or not book.series or book.series == "" then return nil end
+    local index = tonumber(book.series_index)
+    if index then return T(_("Book %1 of %2"), string.format("%g", index), book.series) end
+    return book.series
+end
+
 local function title_of(record, path)
     return record and record.title or tostring(path):match("([^/]+)%.%w+$") or tostring(path)
 end
@@ -58,14 +68,18 @@ function Suggest.groups(ctx)
     local function take(group, path, note)
         if #group >= per or taken[path] or status_of(path) == "complete" then return end
         taken[path] = true
-        group[#group + 1] = { path = path, title = title_of(by_path[path], path), note = note }
+        local record = by_path[path]
+        group[#group + 1] = {
+            path = path, title = title_of(record, path), note = note,
+            series = record and record.series, series_index = record and record.series_index,
+        }
     end
 
     -- 1. The next book in the series: the first one after this that you have not finished.
     local series = {}
     for _i, r in ipairs(without.next_in_series and {} or Series.after(ctx.library or {}, ctx.current)) do
         if #series == 0 and status_of(r.path) ~= "complete" then
-            take(series, r.path, string.format("%s #%s", r.series, string.format("%g", tonumber(r.series_index))))
+            take(series, r.path)
         end
     end
     offer("series", "next_in_series", series)

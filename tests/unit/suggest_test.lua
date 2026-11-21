@@ -38,7 +38,7 @@ T.test("the next book in the series is the first one you have not finished", fun
     -- /s4 is finished, so after /s3 the next is /s5
     local g = find(Suggest.groups(ctx()), "series")
     T.eq(paths(g), "/s5")
-    T.eq(g.books[1].note, "Strike #5")
+    T.eq(Suggest.series_text(g.books[1]), "Book 5 of Strike") -- said by the row label now, not a note
 end)
 T.test("more by this author: books you have not started, series together, others last", function()
     local g = find(Suggest.groups(ctx()), "author")
@@ -177,6 +177,21 @@ T.test("something different skips past a book with no tags to the last one that 
     local groups = Suggest.groups(ctx({ current = false, library = tagged, history = { "/bare", "/f2" }, status_of = function(p) return st[p] or "new" end,
         rating_of = function() return 5 end, without = { next_in_series = true, more_by_author = true } }))
     T.eq(paths(find(groups, "different")), "/sf2") -- /bare has no tags, so /f2 (fantasy) is what to be the opposite of
+end)
+
+T.test("a book in a series says which book it is: Book 3 of the series", function()
+    T.eq(Suggest.series_text({ series = "Strike", series_index = 5 }), "Book 5 of Strike")
+    T.eq(Suggest.series_text({ series = "Strike", series_index = 2.5 }), "Book 2.5 of Strike")
+    T.eq(Suggest.series_text({ series = "Strike" }), "Strike") -- a series with no number
+    T.eq(Suggest.series_text({ title = "Standalone" }), nil)
+    T.eq(Suggest.series_text({ series = "" }), nil)
+end)
+
+T.test("the books offered carry their series, so the list can say where they belong", function()
+    local g = find(Suggest.groups(ctx()), "series")
+    T.eq(g.books[1].series, "Strike")
+    T.eq(g.books[1].series_index, 5)
+    T.eq(g.books[1].note, nil) -- the label says it; the note no longer repeats it
 end)
 
 T.done()
