@@ -96,4 +96,34 @@ T.test("a book with no author gets no author group, and a missing library gives 
     T.eq(#Suggest.groups({ current = "/x" }), 0)
 end)
 
+T.test("one book picked for your taste is offered, with the tags that matched", function()
+    local tagged = {
+        { path = "/a", title = "A", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/b", title = "B", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/c", title = "C", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/d", title = "D", keywords = "Cooking", language = "en" },
+    }
+    local st = { ["/a"] = "complete", ["/b"] = "complete" }
+    local g = find(Suggest.groups(ctx({ current = "/a", library = tagged, history = {}, status_of = function(p) return st[p] or "new" end,
+        rating_of = function() return 5 end })), "for_you")
+    T.eq(paths(g), "/c")
+    T.eq(g.books[1].note, "Fantasy \u{00B7} Romantasy") -- equally common, so alphabetical
+end)
+
+T.test("no taste pick without ratings to go on, and none when the caller does not ask for it", function()
+    T.eq(find(Suggest.groups(ctx()), "for_you"), nil)
+end)
+
+T.test("asked without the groups about the open book, they are left out and a book is still never offered twice", function()
+    local groups = Suggest.groups(ctx({ without = { next_in_series = true, more_by_author = true } }))
+    T.eq(find(groups, "series"), nil)
+    T.eq(find(groups, "author"), nil)
+    T.eq(paths(find(groups, "recent")) ~= "", true)
+end)
+
+T.test("with no book open (the file browser) it still suggests", function()
+    local groups = Suggest.groups(ctx({ current = nil, without = { next_in_series = true, more_by_author = true } }))
+    T.eq(paths(find(groups, "started")) ~= "", true)
+end)
+
 T.done()

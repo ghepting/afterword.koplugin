@@ -1,6 +1,8 @@
 -- What to read next, in groups. No KOReader in here: everything it needs comes in through `ctx`.
 --
---   ctx.current      path of the book just finished (never suggested)
+--   ctx.current      path of the book just finished, or the one open now (never suggested); nil when none is open
+--   ctx.without      { next_in_series = true, more_by_author = true } groups to leave out (they are about ctx.current)
+--   ctx.rating_of    function(path) -> 0 (none) to 5; with it, one unread book that fits your taste is offered
 --   ctx.library      { { path, title, authors, series, series_index }, ... } every book KOReader has details of; authors are one per line
 --   ctx.status_of    function(path) -> "new" | "reading" | "complete" | "abandoned"  (a book never opened is "new")
 --   ctx.modified_of  function(path) -> when the file was added, a number (larger is newer)
@@ -11,6 +13,7 @@
 -- groups(ctx) -> { { id, name, books = { { path, title, note }, ... } }, ... } with a group left out when it has no books. A book
 -- appears once, in the first group that wants it. A book you have finished is never offered.
 local Series = require("afterword/series")
+local Taste = require("afterword/taste")
 
 local Suggest = {}
 
@@ -41,7 +44,9 @@ function Suggest.groups(ctx)
     local by_path = {}
     for _i, r in ipairs(ctx.library or {}) do by_path[r.path] = r end
     local status_of = ctx.status_of or function() return "new" end
-    local taken = { [ctx.current] = true }
+    local without = ctx.without or {}
+    local taken = {}
+    if ctx.current then taken[ctx.current] = true end
     local out = {}
 
     local function offer(id, name, books)
@@ -56,7 +61,7 @@ function Suggest.groups(ctx)
 
     -- 1. The next book in the series: the first one after this that you have not finished.
     local series = {}
-    for _i, r in ipairs(Series.after(ctx.library or {}, ctx.current)) do
+    for _i, r in ipairs(without.next_in_series and {} or Series.after(ctx.library or {}, ctx.current)) do
         if #series == 0 and status_of(r.path) ~= "complete" then
             take(series, r.path, string.format("%s #%s", r.series, string.format("%g", tonumber(r.series_index))))
         end
@@ -68,7 +73,7 @@ function Suggest.groups(ctx)
     local me = by_path[ctx.current]
     local mine = me and authors_of(me) or {}
     local author = {}
-    if next(mine) then
+    if next(mine) and not without.more_by_author then
         local others = {}
         for _i, r in ipairs(ctx.library or {}) do
             local same_series = me and norm(me.series) ~= "" and norm(r.series) == norm(me.series)
@@ -100,7 +105,15 @@ function Suggest.groups(ctx)
     end
     if #collection > 0 then out[#out + 1] = { id = "collection", name = "collection", collection_name = ctx.collection.name, books = collection } end
 
-    -- 4. Recently added: the newest books you have not started.
+    -- 4. Picked for you: one unread book whose tags match the books you have rated highly or finished.
+    local foryou = {}
+    if ctx.rating_of then
+        local pick = Taste.pick { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken }
+        if pick then take(foryou, pick.path, table.concat(pick.tags, " \u{00B7} ")) end
+    end
+    offer("for_you", "picked_for_you", foryou)
+
+    -- 5. Recently added: the newest books you have not started.
     local recent = {}
     local candidates = {}
     for _i, r in ipairs(ctx.library or {}) do
@@ -116,7 +129,7 @@ function Suggest.groups(ctx)
     for _i, r in ipairs(candidates) do take(recent, r.path) end
     offer("recent", "recently_added", recent)
 
-    -- 5. Pick up where you left off: books you started, most recently opened first.
+    -- 6. Pick up where you left off: books you started, most recently opened first.
     local started = {}
     for _i, path in ipairs(ctx.history or {}) do
         if status_of(path) == "reading" then take(started, path) end
