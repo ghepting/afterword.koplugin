@@ -22,3 +22,11 @@ A KOReader plugin in Lua. `tests/run.sh` runs the tests under plain `luajit`.
 ## Shared with ShelfSpace
 
 `afterword/version.lua`, `updater.lua`, `installer.lua` and their tests are ShelfSpace's, synced here with only the names changed, so the update check works the same in both. **Do not edit them here**: CI fails (`tools/sync-shared.sh --check`), and a sync overwrites them. To change one, change it in ShelfSpace, put the new ShelfSpace commit in `tools/shared-from`, and run `tools/sync-shared.sh`.
+
+## Seeding the emulator
+
+`tools/seed-emulator.py rich|thin|restore` writes ratings, progress and a reading history into the desktop emulator's library, so the picks have a taste to work from (`thin` is one rated book, to see the too-little-to-go-on case). It backs up what it touches in `.adds/koreader/.afterword-seed.json`, and `restore` puts every file back exactly. Quit the emulator first.
+
+## The list
+
+The rows of the Pick next list are drawn by `afterword/picklist.lua`: KOReader's own `Menu` (title bar, page arrows, paging) with its own row widget, so a book can have the series on a second line in smaller text. It has no unit tests because it is all KOReader widgets; check it by looking at it in the emulator, at a short screen too, so the list pages.

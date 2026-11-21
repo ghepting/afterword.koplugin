@@ -17,6 +17,7 @@ local Store = require("afterword/store")
 local AfterwordScreen = require("afterword/screen")
 local Finish = require("afterword/finish")
 local Suggest = require("afterword/suggest")
+local Dispatcher = require("dispatcher")
 local Updater = require("afterword/updater")
 local Installer = require("afterword/installer")
 
@@ -32,7 +33,19 @@ local function enabled()
     return G_reader_settings:readSetting(SETTING) ~= false -- on unless switched off
 end
 
+-- A gesture, profile or hotkey can start this from KOReader's action list.
+function Afterword:onDispatcherRegisterActions()
+    Dispatcher:registerAction("afterword_next",
+        { category = "none", event = "AfterwordNext", title = _("Afterword: what to read next"), general = true })
+end
+
+function Afterword:onAfterwordNext()
+    self:showWhatNext()
+    return true
+end
+
 function Afterword:init()
+    self:onDispatcherRegisterActions()
     self.ui.menu:registerToMainMenu(self)
     -- KOReader's own handler for the last page is registered before any plugin and does not stop the event, so both would run.
     -- This session's copy of it is wrapped: with Afterword on it shows the Afterword screen, with it off (or for the quickstart
@@ -67,6 +80,14 @@ function Afterword:addToMainMenu(menu_items)
                 help_text = _("Pick next also offers the first books of a collection you choose here."),
                 keep_menu_open = true,
                 callback = function(touchmenu_instance) self:chooseCollection(touchmenu_instance) end,
+            },
+            {
+                text = _("What to read next"),
+                help_text = _("Pick something else to read, from a book you have open or from the file browser. It can also be started from a gesture."),
+                callback = function(touchmenu_instance)
+                    if touchmenu_instance then touchmenu_instance:closeMenu() end
+                    self:showWhatNext()
+                end,
             },
             {
                 text = _("Check for updates"),
@@ -160,7 +181,7 @@ function Afterword:chooseCollection(touchmenu_instance)
 end
 
 -- What to read next, in groups, for the book just finished.
-function Afterword:suggestions(file)
+function Afterword:suggestions(file, without, just_finished)
     local library, history, collection = {}, {}, nil
     local ok, err = pcall(function()
         local BIM = require("bookinfomanager")
@@ -186,42 +207,82 @@ function Afterword:suggestions(file)
     end
     local lfs = require("libs/libkoreader-lfs")
     return Suggest.groups {
-        current = file, library = library, status_of = status_of,
+        current = file, finished = just_finished and file or nil, library = library, status_of = status_of, without = without,
+        rating_of = function(path)
+            local info = require("ui/widget/booklist").getBookInfo(path)
+            return info and tonumber(info.rating) or 0
+        end,
+        percent_of = function(path)
+            local info = require("ui/widget/booklist").getBookInfo(path)
+            return info and tonumber(info.percent_finished) or 0
+        end,
         modified_of = function(path) return lfs.attributes(path, "modification") or 0 end,
         history = history, collection = collection,
     }
 end
 
 -- The list of suggestions. Tapping a book opens it.
-function Afterword:showPicker(info, on_open)
-    local Menu = require("ui/widget/menu")
-    local groups = self:suggestions(info.file)
+-- `opts.title` names it; `opts.without` leaves out the groups that are about the book you are leaving; `opts.just_finished` says the
+-- open book has been finished, so its sequel is next in line although it may not be marked finished yet.
+function Afterword:showPicker(info, on_open, opts)
+    opts = opts or {}
+    local PickMenu = require("afterword/picklist")
+    local groups = self:suggestions(info.file, opts.without, opts.just_finished)
     local first_author = info.author and info.author:match("^[^,]+") or nil
     local heading = {
         next_in_series = function() return _("Next in the series") end,
         more_by_author = function() return first_author and T(_("More by %1"), first_author) or _("More by this author") end,
         collection = function(g) return T(_("From %1"), g.collection_name or "") end,
+        picked_for_you = function() return _("Picked for you") end,
+        something_different = function() return _("Something different") end,
         recently_added = function() return _("Recently added") end,
         started = function() return _("Pick up where you left off") end,
     }
     local items = {}
     for _i, g in ipairs(groups) do
-        items[#items + 1] = { text = (heading[g.name] or function() return g.name end)(g), bold = true, dim = true, callback = function() end }
+        items[#items + 1] = {
+            text = (heading[g.name] or function() return g.name end)(g), heading = true, callback = function() end,
+        }
         for _j, book in ipairs(g.books) do
-            items[#items + 1] = { text = "    " .. book.title, mandatory = book.note, callback = function() on_open(book.path) end }
+            items[#items + 1] = {
+                text = book.title, subtitle = Suggest.byline(book), mandatory = book.note,
+                callback = function() on_open(book.path) end,
+            }
         end
+        items[#items].last = true -- the row after it is the next group, so it takes no rule
     end
     if #items == 0 then
         UIManager:show(require("ui/widget/infomessage"):new { text = _("Nothing to suggest yet.") })
         return
     end
     local menu
-    menu = Menu:new {
-        title = _("Pick next"), item_table = items, is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
+    menu = PickMenu:new {
+        title = opts.title or _("Pick next"), item_table = items, items_max_lines = 2, -- rows of different heights: PickMenu measures and draws them
+        is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
         close_callback = function() UIManager:close(menu) end,
     }
+    self.picker = menu
     UIManager:show(menu)
     return menu
+end
+
+-- Opens a book from wherever the person is: the reader switches documents, the file browser opens the reader.
+function Afterword:openBook(path)
+    if self.picker then UIManager:close(self.picker); self.picker = nil end
+    if self.ui.document then
+        self.ui:switchDocument(path)
+    else
+        require("apps/reader/readerui"):showReader(path)
+    end
+end
+
+-- What to read next, on request: from a book you have open (and are perhaps not into) or from the file browser. The book you leave
+-- stays as it is, still "reading", and turns up under "Pick up where you left off".
+function Afterword:showWhatNext()
+    local file = self.ui.document and self.ui.document.file
+    self:showPicker({ file = file }, function(path) self:openBook(path) end, {
+        title = _("What to read next"), without = { next_in_series = true, more_by_author = true },
+    })
 end
 
 -- The reader's book status as KOReader keeps it ("complete", "reading", ...), or nil.
@@ -269,7 +330,7 @@ function Afterword:handleEnd()
             self:showPicker(info, function(path)
                 close()
                 self.ui:switchDocument(path)
-            end)
+            end, { just_finished = true })
         end,
         on_done = close,
     }

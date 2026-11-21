@@ -64,4 +64,28 @@ T.test("everything after a book, in order, skipping other series and unnumbered 
     T.eq(#Series.after(lib, "/free"), 0)
 end)
 
+T.test("eligible: a book is offered only when every lower-numbered book of its series is finished", function()
+    local recs = {
+        { path = "/1", series = "S", series_index = 1 }, { path = "/2", series = "S", series_index = 2 },
+        { path = "/3", series = "S", series_index = 3 }, { path = "/solo" }, { path = "/loose", series = "S" },
+    }
+    local st = { ["/1"] = "complete" }
+    local ok = Series.eligible(recs, function(p) return st[p] or "new" end)
+    T.eq(ok("/2"), true)
+    T.eq(ok("/3"), false)    -- /2 is not finished
+    T.eq(ok("/solo"), true)  -- in no series
+    T.eq(ok("/loose"), false) -- in a series but cannot be placed
+    st["/2"] = "reading"
+    T.eq(ok("/3"), false)    -- half read is not finished
+    st["/2"] = "complete"
+    T.eq(ok("/3"), true)
+end)
+
+T.test("eligible: a gap in what you own is skipped, and an unknown book is left alone", function()
+    local recs = { { path = "/1", series = "S", series_index = 1 }, { path = "/3", series = "S", series_index = 3 } }
+    local ok = Series.eligible(recs, function(p) return p == "/1" and "complete" or "new" end)
+    T.eq(ok("/3"), true)  -- there is no 2 to wait for
+    T.eq(ok("/nowhere"), true)
+end)
+
 T.done()

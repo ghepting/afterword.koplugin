@@ -23,7 +23,7 @@ local status = { ["/s4"] = "complete", ["/mid"] = "reading", ["/done"] = "comple
 local when = { ["/new1"] = 100, ["/new2"] = 300, ["/new3"] = 200, ["/solo"] = 50, ["/hp1"] = 60, ["/s5"] = 10, ["/s6"] = 20 }
 local function ctx(extra)
     local c = {
-        current = "/s3", library = lib,
+        current = "/s3", finished = "/s3", library = lib, -- the end of book 3: it counts as finished although its status is not set yet
         status_of = function(p) return status[p] or "new" end,
         modified_of = function(p) return when[p] or 0 end,
         history = { "/mid", "/s3", "/done" },
@@ -38,7 +38,7 @@ T.test("the next book in the series is the first one you have not finished", fun
     -- /s4 is finished, so after /s3 the next is /s5
     local g = find(Suggest.groups(ctx()), "series")
     T.eq(paths(g), "/s5")
-    T.eq(g.books[1].note, "Strike #5")
+    T.eq(Suggest.series_text(g.books[1]), "Book 5 of Strike") -- said by the row label now, not a note
 end)
 T.test("more by this author: books you have not started, series together, others last", function()
     local g = find(Suggest.groups(ctx()), "author")
@@ -94,6 +94,146 @@ T.test("a book with no author gets no author group, and a missing library gives 
     local c = ctx({ library = { bk("/a", "A"), bk("/b", "B") }, current = "/a", history = {} })
     T.eq(find(Suggest.groups(c), "author"), nil)
     T.eq(#Suggest.groups({ current = "/x" }), 0)
+end)
+
+T.test("one book picked for your taste is offered, with the tags that matched", function()
+    local tagged = {
+        { path = "/a", title = "A", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/b", title = "B", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/c", title = "C", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/d", title = "D", keywords = "Cooking", language = "en" },
+    }
+    local st = { ["/a"] = "complete", ["/b"] = "complete" }
+    local g = find(Suggest.groups(ctx({ current = "/a", library = tagged, history = {}, status_of = function(p) return st[p] or "new" end,
+        rating_of = function() return 5 end })), "for_you")
+    T.eq(paths(g), "/c")
+    T.eq(g.books[1].note, "Fantasy \u{00B7} Romantasy") -- equally common, so alphabetical
+end)
+
+T.test("no taste pick without ratings to go on, and none when the caller does not ask for it", function()
+    T.eq(find(Suggest.groups(ctx()), "for_you"), nil)
+end)
+
+T.test("asked without the groups about the open book, they are left out and a book is still never offered twice", function()
+    local groups = Suggest.groups(ctx({ without = { next_in_series = true, more_by_author = true } }))
+    T.eq(find(groups, "series"), nil)
+    T.eq(find(groups, "author"), nil)
+    T.eq(paths(find(groups, "recent")) ~= "", true)
+end)
+
+T.test("with no book open (the file browser) it still suggests", function()
+    local groups = Suggest.groups(ctx({ current = nil, without = { next_in_series = true, more_by_author = true } }))
+    T.eq(paths(find(groups, "started")) ~= "", true)
+end)
+
+T.test("something different is offered with a book open, from a different corner of your library", function()
+    local tagged = {
+        { path = "/f1", title = "F1", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/f2", title = "F2", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/s1", title = "S1", keywords = "Science Fiction", language = "en" },
+        { path = "/cur", title = "Now", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/f3", title = "F3", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/sf", title = "SF", keywords = "Science Fiction", language = "en" },
+    }
+    local st = { ["/f1"] = "complete", ["/f2"] = "complete", ["/s1"] = "complete", ["/cur"] = "reading" }
+    local groups = Suggest.groups(ctx({ current = "/cur", library = tagged, history = {}, status_of = function(p) return st[p] or "new" end,
+        rating_of = function() return 5 end, without = { next_in_series = true, more_by_author = true } }))
+    T.eq(paths(find(groups, "for_you")), "/f3")
+    T.eq(paths(find(groups, "different")), "/sf") -- one each, and never the same book twice
+end)
+
+T.test("something different with no book open is the opposite of the one you read last", function()
+    local tagged = {
+        { path = "/f1", title = "F1", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/f2", title = "F2", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/s1", title = "S1", keywords = "Science Fiction", language = "en" },
+        { path = "/sf", title = "SF", keywords = "Science Fiction", language = "en" },
+        { path = "/sf2", title = "SF2", keywords = "Science Fiction", language = "en" },
+    }
+    local st = { ["/f1"] = "complete", ["/f2"] = "complete", ["/s1"] = "complete" }
+    local groups = Suggest.groups(ctx({ current = false, library = tagged, history = { "/f2", "/f1" }, status_of = function(p) return st[p] or "new" end,
+        rating_of = function() return 5 end, without = { next_in_series = true, more_by_author = true } }))
+    T.eq(paths(find(groups, "for_you")), "/sf")
+    T.eq(paths(find(groups, "different")), "/sf2") -- /f2 was the last read (fantasy), so the cleanser is not fantasy
+end)
+
+T.test("books you started show how far through them you are", function()
+    local g = find(Suggest.groups(ctx({ percent_of = function(p) return p == "/mid" and 0.376 or 0.002 end })), "started")
+    for _, b in ipairs(g.books) do
+        if b.path == "/mid" then T.eq(b.note, "38%") else T.eq(b.note, nil) end -- rounded; no note for 0.2%, which rounds to 0
+    end
+end)
+
+T.test("something different skips past a book with no tags to the last one that has some", function()
+    local tagged = {
+        { path = "/f1", title = "F1", keywords = "Fantasy", language = "en" },
+        { path = "/f2", title = "F2", keywords = "Fantasy", language = "en" },
+        { path = "/s1", title = "S1", keywords = "Science Fiction", language = "en" },
+        { path = "/bare", title = "Bare", language = "en" },
+        { path = "/sf", title = "SF", keywords = "Science Fiction", language = "en" },
+        { path = "/sf2", title = "SF2", keywords = "Science Fiction", language = "en" },
+    }
+    local st = { ["/f1"] = "complete", ["/f2"] = "complete", ["/s1"] = "complete", ["/bare"] = "reading" }
+    local groups = Suggest.groups(ctx({ current = false, library = tagged, history = { "/bare", "/f2" }, status_of = function(p) return st[p] or "new" end,
+        rating_of = function() return 5 end, without = { next_in_series = true, more_by_author = true } }))
+    T.eq(paths(find(groups, "different")), "/sf2") -- /bare has no tags, so /f2 (fantasy) is what to be the opposite of
+end)
+
+T.test("a book in a series says which book it is: Book 3 of the series", function()
+    T.eq(Suggest.series_text({ series = "Strike", series_index = 5 }), "Book 5 of Strike")
+    T.eq(Suggest.series_text({ series = "Strike", series_index = 2.5 }), "Book 2.5 of Strike")
+    T.eq(Suggest.series_text({ series = "Strike" }), "Strike") -- a series with no number
+    T.eq(Suggest.series_text({ title = "Standalone" }), nil)
+    T.eq(Suggest.series_text({ series = "" }), nil)
+end)
+
+T.test("the books offered carry their series, so the list can say where they belong", function()
+    local g = find(Suggest.groups(ctx()), "series")
+    T.eq(g.books[1].series, "Strike")
+    T.eq(g.books[1].series_index, 5)
+    T.eq(g.books[1].note, nil) -- the label says it; the note no longer repeats it
+end)
+
+T.test("nothing new is offered out of order in a series: only the next one you have not read", function()
+    -- /s3 just finished, /s4 finished: /s5 is next, so /s6 must not be offered anywhere
+    local groups = Suggest.groups(ctx({ per_group = 10 }))
+    for _, g in ipairs(groups) do
+        for _, b in ipairs(g.books) do T.eq(b.path ~= "/s6", true) end
+    end
+    T.eq(paths(find(groups, "series")), "/s5")
+end)
+
+T.test("a later book of a series is offered once the earlier ones are finished", function()
+    status["/s3"], status["/s5"] = "complete", "complete" -- 3, 4 and 5 are all finished now
+    local groups = Suggest.groups(ctx({ current = "/s5", finished = "/s5", per_group = 10 }))
+    status["/s3"], status["/s5"] = "reading", nil
+    T.eq(paths(find(groups, "series")), "/s6")
+end)
+
+T.test("a book half read blocks the later ones, but is itself offered under started", function()
+    status["/s5"] = "reading"
+    local groups = Suggest.groups(ctx({ current = "/new1", finished = "/new1", per_group = 10, history = { "/s5" } }))
+    status["/s5"] = nil
+    for _, g in ipairs(groups) do
+        if g.id ~= "started" then
+            for _, b in ipairs(g.books) do T.eq(b.path ~= "/s6", true) end
+        end
+    end
+    T.eq(paths(find(groups, "started")), "/s5")
+end)
+
+T.test("a series book with no number is never offered as something new", function()
+    local l = { { path = "/u", title = "U", authors = "A", series = "Loose" }, { path = "/n", title = "N", authors = "B" } }
+    local groups = Suggest.groups({ current = "/x", library = l, status_of = function() return "new" end, modified_of = function() return 0 end })
+    T.eq(paths(find(groups, "recent")), "/n")
+end)
+
+T.test("the line under a title says the author and which book of the series, whichever it has", function()
+    T.eq(Suggest.byline({ authors = "Colleen Hoover", series = "Verity", series_index = 1 }), "Colleen Hoover \u{00B7} Book 1 of Verity")
+    T.eq(Suggest.byline({ authors = "A. One\nB. Two" }), "A. One, B. Two")
+    T.eq(Suggest.byline({ series = "Strike", series_index = 5 }), "Book 5 of Strike")
+    T.eq(Suggest.byline({ title = "Nothing known" }), nil)
+    T.eq(Suggest.byline({ authors = "  " }), nil)
 end)
 
 T.done()
