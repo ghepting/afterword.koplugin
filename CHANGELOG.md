@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/ghepting/afterword.koplugin/compare/v0.2.0...v0.3.0) (2026-11-21)
+
+
+### Features
+
+* What to read next on request, and one pick that fits your taste ([#5](https://github.com/ghepting/afterword.koplugin/issues/5)) ([f66d3de](https://github.com/ghepting/afterword.koplugin/commit/f66d3de7eac8ed2a19aa6fddd7131b6837e1434c))
+
 ## [0.2.0](https://github.com/ghepting/afterword.koplugin/compare/v0.1.0...v0.2.0) (2026-11-17)
 
 
