@@ -23,7 +23,7 @@ local status = { ["/s4"] = "complete", ["/mid"] = "reading", ["/done"] = "comple
 local when = { ["/new1"] = 100, ["/new2"] = 300, ["/new3"] = 200, ["/solo"] = 50, ["/hp1"] = 60, ["/s5"] = 10, ["/s6"] = 20 }
 local function ctx(extra)
     local c = {
-        current = "/s3", library = lib,
+        current = "/s3", finished = "/s3", library = lib, -- the end of book 3: it counts as finished although its status is not set yet
         status_of = function(p) return status[p] or "new" end,
         modified_of = function(p) return when[p] or 0 end,
         history = { "/mid", "/s3", "/done" },
@@ -192,6 +192,40 @@ T.test("the books offered carry their series, so the list can say where they bel
     T.eq(g.books[1].series, "Strike")
     T.eq(g.books[1].series_index, 5)
     T.eq(g.books[1].note, nil) -- the label says it; the note no longer repeats it
+end)
+
+T.test("nothing new is offered out of order in a series: only the next one you have not read", function()
+    -- /s3 just finished, /s4 finished: /s5 is next, so /s6 must not be offered anywhere
+    local groups = Suggest.groups(ctx({ per_group = 10 }))
+    for _, g in ipairs(groups) do
+        for _, b in ipairs(g.books) do T.eq(b.path ~= "/s6", true) end
+    end
+    T.eq(paths(find(groups, "series")), "/s5")
+end)
+
+T.test("a later book of a series is offered once the earlier ones are finished", function()
+    status["/s3"], status["/s5"] = "complete", "complete" -- 3, 4 and 5 are all finished now
+    local groups = Suggest.groups(ctx({ current = "/s5", finished = "/s5", per_group = 10 }))
+    status["/s3"], status["/s5"] = "reading", nil
+    T.eq(paths(find(groups, "series")), "/s6")
+end)
+
+T.test("a book half read blocks the later ones, but is itself offered under started", function()
+    status["/s5"] = "reading"
+    local groups = Suggest.groups(ctx({ current = "/new1", finished = "/new1", per_group = 10, history = { "/s5" } }))
+    status["/s5"] = nil
+    for _, g in ipairs(groups) do
+        if g.id ~= "started" then
+            for _, b in ipairs(g.books) do T.eq(b.path ~= "/s6", true) end
+        end
+    end
+    T.eq(paths(find(groups, "started")), "/s5")
+end)
+
+T.test("a series book with no number is never offered as something new", function()
+    local l = { { path = "/u", title = "U", authors = "A", series = "Loose" }, { path = "/n", title = "N", authors = "B" } }
+    local groups = Suggest.groups({ current = "/x", library = l, status_of = function() return "new" end, modified_of = function() return 0 end })
+    T.eq(paths(find(groups, "recent")), "/n")
 end)
 
 T.done()

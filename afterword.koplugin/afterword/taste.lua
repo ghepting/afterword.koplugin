@@ -4,6 +4,7 @@
 --   ctx.status_of  function(path) -> "new" | "reading" | "complete" | "abandoned"
 --   ctx.rating_of  function(path) -> 0 (none) to 5
 --   ctx.skip       { [path] = true } books not to offer (the current one, ones already suggested)
+--   ctx.allowed    function(path) -> false for a book that may not be offered (optional)
 --
 --   ctx.current    contrast only: path of the book just read or open now
 --
@@ -106,7 +107,7 @@ end
 -- Whether a book may be offered: unread, not skipped, and in a language you read.
 local function offerable(ctx, model, record)
     local lang = tostring(record.language or ""):lower()
-    return not (ctx.skip or {})[record.path] and ctx.status_of(record.path) == "new"
+    return not (ctx.skip or {})[record.path] and ctx.status_of(record.path) == "new" and (ctx.allowed == nil or ctx.allowed(record.path))
         and (model.language == nil or lang == "" or lang == model.language)
 end
 

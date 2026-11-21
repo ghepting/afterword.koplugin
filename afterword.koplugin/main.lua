@@ -181,7 +181,7 @@ function Afterword:chooseCollection(touchmenu_instance)
 end
 
 -- What to read next, in groups, for the book just finished.
-function Afterword:suggestions(file, without)
+function Afterword:suggestions(file, without, just_finished)
     local library, history, collection = {}, {}, nil
     local ok, err = pcall(function()
         local BIM = require("bookinfomanager")
@@ -207,7 +207,7 @@ function Afterword:suggestions(file, without)
     end
     local lfs = require("libs/libkoreader-lfs")
     return Suggest.groups {
-        current = file, library = library, status_of = status_of, without = without,
+        current = file, finished = just_finished and file or nil, library = library, status_of = status_of, without = without,
         rating_of = function(path)
             local info = require("ui/widget/booklist").getBookInfo(path)
             return info and tonumber(info.rating) or 0
@@ -222,11 +222,12 @@ function Afterword:suggestions(file, without)
 end
 
 -- The list of suggestions. Tapping a book opens it.
--- `opts.title` names it; `opts.without` leaves out the groups that are about the book you are leaving.
+-- `opts.title` names it; `opts.without` leaves out the groups that are about the book you are leaving; `opts.just_finished` says the
+-- open book has been finished, so its sequel is next in line although it may not be marked finished yet.
 function Afterword:showPicker(info, on_open, opts)
     opts = opts or {}
     local Menu = require("ui/widget/menu")
-    local groups = self:suggestions(info.file, opts.without)
+    local groups = self:suggestions(info.file, opts.without, opts.just_finished)
     local first_author = info.author and info.author:match("^[^,]+") or nil
     local heading = {
         next_in_series = function() return _("Next in the series") end,
@@ -327,7 +328,7 @@ function Afterword:handleEnd()
             self:showPicker(info, function(path)
                 close()
                 self.ui:switchDocument(path)
-            end)
+            end, { just_finished = true })
         end,
         on_done = close,
     }

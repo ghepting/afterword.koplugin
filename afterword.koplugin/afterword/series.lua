@@ -62,4 +62,32 @@ function Series.position(records, path)
     return { index = mine, last = last, series = me.series }
 end
 
+-- eligible(records, status_of) -> function(path) -> true when the book may be suggested as something new: it is in no series, or
+-- every book of its series with a lower number is finished. So book 3 is not offered while book 2 is unread, half read or on hold;
+-- a gap in what you own is skipped. A book in a series but with no number cannot be placed, so it is never offered.
+function Series.eligible(records, status_of)
+    local by_path, by_series = {}, {}
+    for _i, r in ipairs(records or {}) do
+        by_path[r.path] = r
+        local key = norm(r.series)
+        if key ~= "" then
+            by_series[key] = by_series[key] or {}
+            table.insert(by_series[key], r)
+        end
+    end
+    return function(path)
+        local r = by_path[path]
+        if not r then return true end
+        local key = norm(r.series)
+        if key == "" then return true end
+        local index = tonumber(r.series_index)
+        if not index then return false end
+        for _i, other in ipairs(by_series[key]) do
+            local before = tonumber(other.series_index)
+            if before and before < index and status_of(other.path) ~= "complete" then return false end
+        end
+        return true
+    end
+end
+
 return Series

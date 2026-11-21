@@ -1,6 +1,7 @@
 -- What to read next, in groups. No KOReader in here: everything it needs comes in through `ctx`.
 --
 --   ctx.current      path of the book just finished, or the one open now (never suggested); nil when none is open
+--   ctx.finished     path of the book just finished, counted as finished although it may not be marked so yet (end of a book)
 --   ctx.without      { next_in_series = true, more_by_author = true } groups to leave out (they are about ctx.current)
 --   ctx.rating_of    function(path) -> 0 (none) to 5; with it, one unread book that fits your taste is offered, and, when a book is
 --                    open, or else the one you read last, one that is the opposite of it
@@ -55,7 +56,13 @@ function Suggest.groups(ctx)
     local per = ctx.per_group or 3
     local by_path = {}
     for _i, r in ipairs(ctx.library or {}) do by_path[r.path] = r end
-    local status_of = ctx.status_of or function() return "new" end
+    local raw_status = ctx.status_of or function() return "new" end
+    local function status_of(path)
+        if ctx.finished and path == ctx.finished then return "complete" end
+        return raw_status(path)
+    end
+    -- Nothing new is offered out of order: a book in a series only when every lower-numbered one is finished (Series.eligible).
+    local eligible = Series.eligible(ctx.library, status_of)
     local without = ctx.without or {}
     local taken = {}
     if ctx.current then taken[ctx.current] = true end
@@ -65,8 +72,10 @@ function Suggest.groups(ctx)
         if #books > 0 then out[#out + 1] = { id = id, name = name, books = books } end
     end
     -- Adds a book to a group when it is not the current one, not finished, and not already in an earlier group.
-    local function take(group, path, note)
+    -- `resume`: a book you already started, which is not "out of order" whatever its place in a series.
+    local function take(group, path, note, resume)
         if #group >= per or taken[path] or status_of(path) == "complete" then return end
+        if not resume and not eligible(path) then return end
         taken[path] = true
         local record = by_path[path]
         group[#group + 1] = {
@@ -124,7 +133,7 @@ function Suggest.groups(ctx)
     -- 4. Picked for you: one unread book whose tags match the books you have rated highly or finished.
     local foryou = {}
     if ctx.rating_of then
-        local pick = Taste.pick { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken }
+        local pick = Taste.pick { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, allowed = eligible }
         if pick then take(foryou, pick.path, table.concat(pick.tags, " \u{00B7} ")) end
     end
     offer("for_you", "picked_for_you", foryou)
@@ -143,7 +152,7 @@ function Suggest.groups(ctx)
         end
     end
     if ctx.rating_of and anchor then
-        local pick = Taste.contrast { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, current = anchor }
+        local pick = Taste.contrast { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, allowed = eligible, current = anchor }
         if pick then take(different, pick.path, table.concat(pick.tags, " \u{00B7} ")) end
     end
     offer("different", "something_different", different)
@@ -169,7 +178,7 @@ function Suggest.groups(ctx)
     for _i, path in ipairs(ctx.history or {}) do
         if status_of(path) == "reading" then
             local percent = math.floor((ctx.percent_of and tonumber(ctx.percent_of(path)) or 0) * 100 + 0.5)
-            take(started, path, percent > 0 and string.format("%d%%", percent) or nil) -- nothing for a sliver that rounds to 0%
+            take(started, path, percent > 0 and string.format("%d%%", percent) or nil, true) -- nothing for a sliver that rounds to 0%
         end
     end
     offer("started", "started", started)
