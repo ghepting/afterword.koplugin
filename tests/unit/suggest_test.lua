@@ -126,4 +126,20 @@ T.test("with no book open (the file browser) it still suggests", function()
     T.eq(paths(find(groups, "started")) ~= "", true)
 end)
 
+T.test("something different is offered with a book open, from a different corner of your library", function()
+    local tagged = {
+        { path = "/f1", title = "F1", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/f2", title = "F2", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/s1", title = "S1", keywords = "Science Fiction", language = "en" },
+        { path = "/cur", title = "Now", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/f3", title = "F3", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/sf", title = "SF", keywords = "Science Fiction", language = "en" },
+    }
+    local st = { ["/f1"] = "complete", ["/f2"] = "complete", ["/s1"] = "complete", ["/cur"] = "reading" }
+    local groups = Suggest.groups(ctx({ current = "/cur", library = tagged, history = {}, status_of = function(p) return st[p] or "new" end,
+        rating_of = function() return 5 end, without = { next_in_series = true, more_by_author = true } }))
+    T.eq(paths(find(groups, "for_you")), "/f3")
+    T.eq(paths(find(groups, "different")), "/sf") -- one each, and never the same book twice
+end)
+
 T.done()

@@ -229,6 +229,7 @@ function Afterword:showPicker(info, on_open, opts)
         more_by_author = function() return first_author and T(_("More by %1"), first_author) or _("More by this author") end,
         collection = function(g) return T(_("From %1"), g.collection_name or "") end,
         picked_for_you = function() return _("Picked for you") end,
+        something_different = function() return _("Something different") end,
         recently_added = function() return _("Recently added") end,
         started = function() return _("Pick up where you left off") end,
     }

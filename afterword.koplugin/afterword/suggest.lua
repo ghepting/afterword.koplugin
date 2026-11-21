@@ -2,7 +2,8 @@
 --
 --   ctx.current      path of the book just finished, or the one open now (never suggested); nil when none is open
 --   ctx.without      { next_in_series = true, more_by_author = true } groups to leave out (they are about ctx.current)
---   ctx.rating_of    function(path) -> 0 (none) to 5; with it, one unread book that fits your taste is offered
+--   ctx.rating_of    function(path) -> 0 (none) to 5; with it, one unread book that fits your taste is offered, and, when a book is
+--                    open, one that is the opposite of it
 --   ctx.library      { { path, title, authors, series, series_index }, ... } every book KOReader has details of; authors are one per line
 --   ctx.status_of    function(path) -> "new" | "reading" | "complete" | "abandoned"  (a book never opened is "new")
 --   ctx.modified_of  function(path) -> when the file was added, a number (larger is newer)
@@ -113,7 +114,16 @@ function Suggest.groups(ctx)
     end
     offer("for_you", "picked_for_you", foryou)
 
-    -- 5. Recently added: the newest books you have not started.
+    -- Something different: for when you want the opposite of the book you are on. One unread book with no tag of this one that
+    -- fits what you like.
+    local different = {}
+    if ctx.rating_of and ctx.current then
+        local pick = Taste.contrast { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, current = ctx.current }
+        if pick then take(different, pick.path, table.concat(pick.tags, " \u{00B7} ")) end
+    end
+    offer("different", "something_different", different)
+
+    -- 6. Recently added: the newest books you have not started.
     local recent = {}
     local candidates = {}
     for _i, r in ipairs(ctx.library or {}) do
@@ -129,7 +139,7 @@ function Suggest.groups(ctx)
     for _i, r in ipairs(candidates) do take(recent, r.path) end
     offer("recent", "recently_added", recent)
 
-    -- 6. Pick up where you left off: books you started, most recently opened first.
+    -- 7. Pick up where you left off: books you started, most recently opened first.
     local started = {}
     for _i, path in ipairs(ctx.history or {}) do
         if status_of(path) == "reading" then take(started, path) end

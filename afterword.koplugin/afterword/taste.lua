@@ -5,7 +5,11 @@
 --   ctx.rating_of  function(path) -> 0 (none) to 5
 --   ctx.skip       { [path] = true } books not to offer (the current one, ones already suggested)
 --
+--   ctx.current    contrast only: path of the book just read or open now
+--
 -- pick(ctx) -> { path, tags } where tags are the two that matched best, or nil when there is too little to go on.
+-- contrast(ctx) -> the same shape: an unread book that shares no tag with ctx.current and none you have rated down, and fits
+-- the tags you do like, for when you want something different from the book you are on.
 --
 -- A book you rated 4 or 5 counts for its tags, a 3 a little, a 1 or 2 against them; one you finished without rating counts a
 -- little; one you put on hold counts a little against. Tags that few books carry count for more than ones nearly everything has,
@@ -37,9 +41,9 @@ local function weight(status, rating)
     return 0
 end
 
-function Taste.pick(ctx)
+-- What the library says about taste: each book's tags, how common each tag is, and how much you like each one.
+local function build(ctx)
     local library = ctx.library or {}
-    local skip = ctx.skip or {}
     local tags, label, df, tagged = {}, {}, {}, 0
     for _i, r in ipairs(library) do
         local list = tags_of(r)
@@ -63,35 +67,78 @@ function Taste.pick(ctx)
             end
         end
     end
-    if liked < MIN_LIKED then return nil end
 
     local mine, best = nil, 0
     for lang, n in pairs(languages) do
         if n > best then mine, best = lang, n end
     end
+    return { tags = tags, label = label, df = df, tagged = tagged, profile = profile, liked = liked, language = mine }
+end
 
+-- How well an unread book fits the tags you like (0 when none of its tags qualify), and the two that matter most.
+-- `except` is a set of tag keys not to count.
+local function fit(model, record, except)
+    local list = model.tags[record.path]
+    local score, matched = 0, {}
+    for _j, t in ipairs(list) do
+        local p = model.profile[t.key] or 0
+        if p > 0 and not (except and except[t.key]) then
+            local value = p * math.log(1 + model.tagged / model.df[t.key])
+            score = score + value
+            matched[#matched + 1] = { key = t.key, value = value }
+        end
+    end
+    score = score / math.sqrt(math.max(#list, 1))
+    table.sort(matched, function(a, b)
+        if a.value ~= b.value then return a.value > b.value end
+        return a.key < b.key
+    end)
+    local top = {}
+    for i = 1, math.min(2, #matched) do top[i] = model.label[matched[i].key] end
+    return score, top
+end
+
+-- Whether a book may be offered: unread, not skipped, and in a language you read.
+local function offerable(ctx, model, record)
+    local lang = tostring(record.language or ""):lower()
+    return not (ctx.skip or {})[record.path] and ctx.status_of(record.path) == "new"
+        and (model.language == nil or lang == "" or lang == model.language)
+end
+
+local function better(score, record, best_score, best)
+    return best == nil or score > best_score or (score == best_score and record.path < best.path)
+end
+
+function Taste.pick(ctx)
+    local model = build(ctx)
+    if model.liked < MIN_LIKED then return nil end
     local pick, pick_score
-    for _i, r in ipairs(library) do
-        local lang = tostring(r.language or ""):lower()
-        if not skip[r.path] and ctx.status_of(r.path) == "new" and (mine == nil or lang == "" or lang == mine) then
-            local score, matched = 0, {}
-            for _j, t in ipairs(tags[r.path]) do
-                local p = profile[t.key] or 0
-                if p > 0 then
-                    local value = p * math.log(1 + tagged / df[t.key])
-                    score = score + value
-                    matched[#matched + 1] = { key = t.key, value = value }
-                end
+    for _i, r in ipairs(ctx.library or {}) do
+        if offerable(ctx, model, r) then
+            local score, top = fit(model, r)
+            if score > 0 and better(score, r, pick_score, pick) then pick, pick_score = { path = r.path, tags = top }, score end
+        end
+    end
+    return pick
+end
+
+function Taste.contrast(ctx)
+    local model = build(ctx)
+    if model.liked < MIN_LIKED or not ctx.current then return nil end
+    local mine = {}
+    for _i, t in ipairs(model.tags[ctx.current] or {}) do mine[t.key] = true end
+    if next(mine) == nil then return nil end -- nothing to be the opposite of
+    local pick, pick_score
+    for _i, r in ipairs(ctx.library or {}) do
+        if offerable(ctx, model, r) and r.path ~= ctx.current then
+            local list = model.tags[r.path]
+            local clear = #list > 0
+            for _j, t in ipairs(list) do
+                if mine[t.key] or (model.profile[t.key] or 0) < 0 then clear = false; break end
             end
-            score = score / math.sqrt(math.max(#tags[r.path], 1))
-            if score > 0 and (pick == nil or score > pick_score or (score == pick_score and r.path < pick.path)) then
-                table.sort(matched, function(a, b)
-                    if a.value ~= b.value then return a.value > b.value end
-                    return a.key < b.key
-                end)
-                local top = {}
-                for i = 1, math.min(2, #matched) do top[i] = label[matched[i].key] end
-                pick, pick_score = { path = r.path, tags = top }, score
+            if clear then
+                local score, top = fit(model, r)
+                if score > 0 and better(score, r, pick_score, pick) then pick, pick_score = { path = r.path, tags = top }, score end
             end
         end
     end

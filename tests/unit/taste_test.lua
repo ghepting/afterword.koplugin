@@ -71,4 +71,42 @@ T.test("books with no tags are never offered, and generic tags carry no weight",
     T.eq(pick.path, "/d")
 end)
 
+-- Contrast: something that shares nothing with the book you are on, but that you would probably like.
+local clib = {
+    bk("/f1", { "Fantasy", "Romantasy" }, "en"), bk("/f2", { "Fantasy", "Romantasy" }, "en"),
+    bk("/s1", { "Science Fiction", "Space" }, "en"), bk("/d1", { "Thriller" }, "en"),
+    bk("/cur", { "Fantasy", "Romantasy", "Young Adult" }, "en"),
+    bk("/scifi", { "Science Fiction", "Adventure" }, "en"), bk("/fantasy2", { "Fantasy", "Dragons" }, "en"),
+    bk("/crime", { "Thriller", "Space" }, "en"), bk("/cook", { "Cooking" }, "en"),
+}
+local cst = { ["/f1"] = "complete", ["/f2"] = "complete", ["/s1"] = "complete", ["/d1"] = "complete", ["/cur"] = "complete" }
+local crt = { ["/f1"] = 5, ["/f2"] = 5, ["/s1"] = 5, ["/d1"] = 1, ["/cur"] = 5 }
+local function cctx(extra)
+    local c = { library = clib, current = "/cur", status_of = function(p) return cst[p] or "new" end, rating_of = function(p) return crt[p] or 0 end }
+    for k, v in pairs(extra or {}) do c[k] = v end
+    return c
+end
+
+T.test("something different: shares no tag with the book you are on and fits what you like", function()
+    local pick = Taste.contrast(cctx())
+    T.eq(pick.path, "/scifi")
+    T.eq(table.concat(pick.tags, "+"), "Science Fiction")
+end)
+
+T.test("something different is never a book with a tag of this one, or a tag you rated down", function()
+    local pick = Taste.contrast(cctx())
+    T.eq(pick.path ~= "/fantasy2", true) -- shares Fantasy
+    T.eq(pick.path ~= "/crime", true)    -- carries Thriller, which you rated 1
+    T.eq(pick.path ~= "/cook", true)     -- nothing about it is a tag you like
+end)
+
+T.test("something different needs a tagged book to be the opposite of, and enough taste to go on", function()
+    T.eq(Taste.contrast(cctx({ current = false })), nil)
+    T.eq(Taste.contrast(cctx({ current = "/cook" })) ~= nil, true) -- Cooking: anything else will do, so it still finds one
+    T.eq(Taste.contrast(cctx({ current = "/nowhere" })), nil)
+    local few = { library = { clib[1], clib[5], clib[6] }, current = "/cur",
+        status_of = function(p) return p == "/f1" and "complete" or "new" end, rating_of = function(p) return p == "/f1" and 5 or 0 end }
+    T.eq(Taste.contrast(few), nil)
+end)
+
 T.done()
