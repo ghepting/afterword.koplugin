@@ -118,8 +118,16 @@ function Suggest.groups(ctx)
     -- Something different: for when you want the opposite of the book you are on. One unread book with no tag of this one that
     -- fits what you like.
     local different = {}
-    -- With no book open (the file browser), the opposite of the one you read last.
-    local anchor = ctx.current or (ctx.history or {})[1]
+    -- The opposite of the book you are on or read last; one with no tags has nothing to be the opposite of, so the most recent that
+    -- has some is used.
+    local anchor
+    if ctx.current and Taste.tagged(by_path[ctx.current]) then
+        anchor = ctx.current
+    else
+        for _i, path in ipairs(ctx.history or {}) do
+            if Taste.tagged(by_path[path]) then anchor = path; break end
+        end
+    end
     if ctx.rating_of and anchor then
         local pick = Taste.contrast { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, current = anchor }
         if pick then take(different, pick.path, table.concat(pick.tags, " \u{00B7} ")) end
@@ -146,8 +154,8 @@ function Suggest.groups(ctx)
     local started = {}
     for _i, path in ipairs(ctx.history or {}) do
         if status_of(path) == "reading" then
-            local fraction = ctx.percent_of and tonumber(ctx.percent_of(path)) or 0
-            take(started, path, fraction > 0 and string.format("%d%%", math.floor(fraction * 100 + 0.5)) or nil)
+            local percent = math.floor((ctx.percent_of and tonumber(ctx.percent_of(path)) or 0) * 100 + 0.5)
+            take(started, path, percent > 0 and string.format("%d%%", percent) or nil) -- nothing for a sliver that rounds to 0%
         end
     end
     offer("started", "started", started)

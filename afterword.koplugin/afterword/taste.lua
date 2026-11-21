@@ -41,6 +41,11 @@ local function weight(status, rating)
     return 0
 end
 
+-- Whether a library record has any usable genre tags.
+function Taste.tagged(record)
+    return record ~= nil and #tags_of(record) > 0
+end
+
 -- What the library says about taste: each book's tags, how common each tag is, and how much you like each one.
 local function build(ctx)
     local library = ctx.library or {}

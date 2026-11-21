@@ -158,10 +158,25 @@ T.test("something different with no book open is the opposite of the one you rea
 end)
 
 T.test("books you started show how far through them you are", function()
-    local g = find(Suggest.groups(ctx({ percent_of = function(p) return p == "/mid" and 0.376 or 0 end })), "started")
+    local g = find(Suggest.groups(ctx({ percent_of = function(p) return p == "/mid" and 0.376 or 0.002 end })), "started")
     for _, b in ipairs(g.books) do
-        if b.path == "/mid" then T.eq(b.note, "38%") else T.eq(b.note, nil) end -- rounded; no note until you are past the start
+        if b.path == "/mid" then T.eq(b.note, "38%") else T.eq(b.note, nil) end -- rounded; no note for 0.2%, which rounds to 0
     end
+end)
+
+T.test("something different skips past a book with no tags to the last one that has some", function()
+    local tagged = {
+        { path = "/f1", title = "F1", keywords = "Fantasy", language = "en" },
+        { path = "/f2", title = "F2", keywords = "Fantasy", language = "en" },
+        { path = "/s1", title = "S1", keywords = "Science Fiction", language = "en" },
+        { path = "/bare", title = "Bare", language = "en" },
+        { path = "/sf", title = "SF", keywords = "Science Fiction", language = "en" },
+        { path = "/sf2", title = "SF2", keywords = "Science Fiction", language = "en" },
+    }
+    local st = { ["/f1"] = "complete", ["/f2"] = "complete", ["/s1"] = "complete", ["/bare"] = "reading" }
+    local groups = Suggest.groups(ctx({ current = false, library = tagged, history = { "/bare", "/f2" }, status_of = function(p) return st[p] or "new" end,
+        rating_of = function() return 5 end, without = { next_in_series = true, more_by_author = true } }))
+    T.eq(paths(find(groups, "different")), "/sf2") -- /bare has no tags, so /f2 (fantasy) is what to be the opposite of
 end)
 
 T.done()
