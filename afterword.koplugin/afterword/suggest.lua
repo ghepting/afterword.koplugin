@@ -3,10 +3,11 @@
 --   ctx.current      path of the book just finished, or the one open now (never suggested); nil when none is open
 --   ctx.without      { next_in_series = true, more_by_author = true } groups to leave out (they are about ctx.current)
 --   ctx.rating_of    function(path) -> 0 (none) to 5; with it, one unread book that fits your taste is offered, and, when a book is
---                    open, one that is the opposite of it
+--                    open, or else the one you read last, one that is the opposite of it
 --   ctx.library      { { path, title, authors, series, series_index }, ... } every book KOReader has details of; authors are one per line
 --   ctx.status_of    function(path) -> "new" | "reading" | "complete" | "abandoned"  (a book never opened is "new")
 --   ctx.modified_of  function(path) -> when the file was added, a number (larger is newer)
+--   ctx.percent_of   function(path) -> how far through a book you are, 0 to 1 (optional; shown on the books you started)
 --   ctx.history      { path, ... } books you have opened, most recent first
 --   ctx.collection   { name, paths } a collection chosen in settings, in its own order; or nil
 --   ctx.per_group    how many in each group (default 3)
@@ -117,8 +118,10 @@ function Suggest.groups(ctx)
     -- Something different: for when you want the opposite of the book you are on. One unread book with no tag of this one that
     -- fits what you like.
     local different = {}
-    if ctx.rating_of and ctx.current then
-        local pick = Taste.contrast { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, current = ctx.current }
+    -- With no book open (the file browser), the opposite of the one you read last.
+    local anchor = ctx.current or (ctx.history or {})[1]
+    if ctx.rating_of and anchor then
+        local pick = Taste.contrast { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, current = anchor }
         if pick then take(different, pick.path, table.concat(pick.tags, " \u{00B7} ")) end
     end
     offer("different", "something_different", different)
@@ -142,7 +145,10 @@ function Suggest.groups(ctx)
     -- 7. Pick up where you left off: books you started, most recently opened first.
     local started = {}
     for _i, path in ipairs(ctx.history or {}) do
-        if status_of(path) == "reading" then take(started, path) end
+        if status_of(path) == "reading" then
+            local fraction = ctx.percent_of and tonumber(ctx.percent_of(path)) or 0
+            take(started, path, fraction > 0 and string.format("%d%%", math.floor(fraction * 100 + 0.5)) or nil)
+        end
     end
     offer("started", "started", started)
 

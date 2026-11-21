@@ -31,9 +31,9 @@ When you reach the end of a book, Afterword shows one screen: how the book went,
   2. **More by** the author: their other books you have not started (not this book's series, which is the group above)
   3. **From** a collection you choose (see below)
   4. **Picked for you:** one unread book that fits your taste, with the tags it matched (see below)
-  5. **Something different:** for when you want the opposite of the book you are on: one unread book that shares none of its tags and none you have rated down, and fits the tags you do like
+  5. **Something different:** for when you want the opposite of the book you are on (or, from the file browser, the one you read last): one unread book that shares none of its tags and none you have rated down, and fits the tags you do like
   6. **Recently added:** the newest books you have not started
-  7. **Pick up where you left off:** books you started and did not finish
+  7. **Pick up where you left off:** books you started and did not finish, with how far through each you are
 
 **Picked for you** is worked out on the device from what KOReader already knows. A book you rated 4 or 5 counts for its genre tags, a 3 a little, a 1 or 2 against them; a book you finished without rating counts a little for them, and one you put on hold a little against. An unread book is scored by how many of its tags you have liked, with rare tags counting for more than ones nearly everything has, and books in a language you do not read are left out. It needs at least two books you liked before it will guess, and books with no tags are never offered. Nothing is sent anywhere.
 

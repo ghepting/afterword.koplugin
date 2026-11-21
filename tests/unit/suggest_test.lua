@@ -142,4 +142,26 @@ T.test("something different is offered with a book open, from a different corner
     T.eq(paths(find(groups, "different")), "/sf") -- one each, and never the same book twice
 end)
 
+T.test("something different with no book open is the opposite of the one you read last", function()
+    local tagged = {
+        { path = "/f1", title = "F1", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/f2", title = "F2", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/s1", title = "S1", keywords = "Science Fiction", language = "en" },
+        { path = "/sf", title = "SF", keywords = "Science Fiction", language = "en" },
+        { path = "/sf2", title = "SF2", keywords = "Science Fiction", language = "en" },
+    }
+    local st = { ["/f1"] = "complete", ["/f2"] = "complete", ["/s1"] = "complete" }
+    local groups = Suggest.groups(ctx({ current = false, library = tagged, history = { "/f2", "/f1" }, status_of = function(p) return st[p] or "new" end,
+        rating_of = function() return 5 end, without = { next_in_series = true, more_by_author = true } }))
+    T.eq(paths(find(groups, "for_you")), "/sf")
+    T.eq(paths(find(groups, "different")), "/sf2") -- /f2 was the last read (fantasy), so the cleanser is not fantasy
+end)
+
+T.test("books you started show how far through them you are", function()
+    local g = find(Suggest.groups(ctx({ percent_of = function(p) return p == "/mid" and 0.376 or 0 end })), "started")
+    for _, b in ipairs(g.books) do
+        if b.path == "/mid" then T.eq(b.note, "38%") else T.eq(b.note, nil) end -- rounded; no note until you are past the start
+    end
+end)
+
 T.done()

@@ -212,6 +212,10 @@ function Afterword:suggestions(file, without)
             local info = require("ui/widget/booklist").getBookInfo(path)
             return info and tonumber(info.rating) or 0
         end,
+        percent_of = function(path)
+            local info = require("ui/widget/booklist").getBookInfo(path)
+            return info and tonumber(info.percent_finished) or 0
+        end,
         modified_of = function(path) return lfs.attributes(path, "modification") or 0 end,
         history = history, collection = collection,
     }
