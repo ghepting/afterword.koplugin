@@ -248,7 +248,7 @@ function Afterword:showPicker(info, on_open, opts)
             local book = g.books[1]
             cards[#cards + 1] = {
                 heading = name, book = book, why = (Suggest.explain(g.name, book, g)),
-                solid = #cards == 0, button = #cards == 0 and _("Start reading") or _("Start"),
+                solid = #cards == 0, button = _("Start reading"),
             }
         else
             columns[#columns + 1] = { heading = name, books = g.books, progress = g.name == "started" }

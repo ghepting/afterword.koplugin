@@ -300,12 +300,12 @@ function PickMenu:setupItemHeights()
     -- the picks: as tall as is left after one row of lists on the same screen, and no wider than a pick's card has room for
     local fixed = first_lists and (d.section_gap + first_lists.body_h) or 0
     local want = self.available_height - fixed - d.section_gap - d.head_h - s(6)
-    d.pick_h = math.max(s(96), math.min(want, math.floor(d.card_w * 0.5 * 1.5)) - s(12))
+    d.pick_h = math.floor(math.max(s(96), math.min(want, math.floor(d.card_w * 0.5 * 1.5)) - s(12)) * 0.87)
     d.pick_w = math.floor(d.pick_h / 1.5)
     -- when the whole list fits with room to spare, the space goes between the picks and the lists, not as a hole at the bottom
     if #self.item_table <= 2 and first_lists then
         local spare = self.available_height - (d.head_h + d.pick_h) - (d.section_gap + first_lists.body_h)
-        if spare > 0 then d.section_gap = d.section_gap + math.min(spare, s(24)) end
+        if spare > 0 then d.section_gap = d.section_gap + math.min(spare, s(36)) end
     end
     local function height(item)
         local top = item.at_top and 0 or d.section_gap
