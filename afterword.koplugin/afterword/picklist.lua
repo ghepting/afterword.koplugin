@@ -134,7 +134,9 @@ end
 -- Text of at most `lines` lines: as tall as it needs, no taller, with an ellipsis when it was cut.
 local function capped_text(text, f, width, lines, bold, fgcolor)
     local widget = TextBoxWidget:new { text = text, face = f, width = width, bold = bold, fgcolor = fgcolor }
-    local limit = lines * line_height(f, bold)
+    local one = TextBoxWidget:new { text = "Ag", face = f, width = width, bold = bold }
+    local limit = lines * one:getSize().h -- a text box's own line height, which is not a single text widget's
+    one:free()
     if widget:getSize().h > limit + 1 then
         widget:free()
         widget = TextBoxWidget:new { text = text, face = f, width = width, bold = bold, fgcolor = fgcolor, height = limit, height_overflow_show_ellipsis = true }
@@ -242,13 +244,9 @@ function PickRow:buildShelf()
         cell[#cell + 1] = VerticalSpan:new { width = d.caption_gap }
         local title = capped_text(book.title or "?", d.f_title, d.shelf_w, 2)
         cell[#cell + 1] = title
-        local spare = (entry.title_h or 0) - title:getSize().h
-        if spare > 0 then cell[#cell + 1] = VerticalSpan:new { width = spare } end
         local author = book.authors and tostring(book.authors):gsub("\n", ", ") or ""
         if author ~= "" then
             cell[#cell + 1] = TextWidget:new { text = author, face = d.f_author, fgcolor = GREY, max_width = d.shelf_w, truncate_with_ellipsis = true }
-        else
-            cell[#cell + 1] = VerticalSpan:new { width = d.lh_author }
         end
         local meta = shelf_meta(book, entry.progress)
         if meta then
@@ -291,17 +289,20 @@ function PickMenu:setupItemHeights()
     local d = dims(self.inner_dimen.w, self.font_size)
     d.heading_gap = math.floor(d.lh_heading * 1.1) -- white space above a group's name, except at the top of a page
     self.dims = d
-    -- A shelf's captions are as tall as the tallest title in it needs: measured once, kept on the row.
+    -- A shelf's captions stack with no gaps: each book takes only the lines it has, and the row is as tall as its tallest caption.
     local function measure_shelf(item)
         if item.measured_width == d.shelf_w then return end
-        local title_h, meta = 0, false
+        local tallest = 0
         for _i, book in ipairs(item.books) do
             local title = capped_text(book.title or "?", d.f_title, d.shelf_w, 2)
-            title_h = math.max(title_h, title:getSize().h)
+            local h = title:getSize().h
             title:free()
-            if shelf_meta(book, item.progress) then meta = true end
+            local author = book.authors and tostring(book.authors):gsub("\n", ", ") or ""
+            if author ~= "" then h = h + d.lh_author end
+            if shelf_meta(book, item.progress) then h = h + d.lh_meta end
+            tallest = math.max(tallest, h)
         end
-        item.title_h, item.has_meta, item.measured_width = title_h, meta, d.shelf_w
+        item.caption_h, item.measured_width = tallest, d.shelf_w
     end
     local function height(item, at_top)
         if item.heading then
@@ -315,7 +316,7 @@ function PickMenu:setupItemHeights()
         -- a shelf: the covers, then (for what you are reading) a thin bar, then the title, the author and a grey line
         measure_shelf(item)
         local bar = item.progress and (s(6) + s(3)) or 0
-        return d.vgap + d.shelf_h + bar + d.caption_gap + item.title_h + d.lh_author + (item.has_meta and d.lh_meta or 0) + d.vgap
+        return d.vgap + d.shelf_h + bar + d.caption_gap + item.caption_h + d.vgap
     end
     self.page_items = {}
     local items, used = {}, 0
