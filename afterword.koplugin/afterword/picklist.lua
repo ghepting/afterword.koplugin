@@ -47,7 +47,7 @@ end
 
 -- Sizes for a list `width` wide. A cover is always two thirds as wide as it is tall.
 local function dims(width)
-    local d = { width = width, pad = s(22), col_gap = s(18), section_gap = s(14), thumb_gap = s(10), row_gap = s(8) }
+    local d = { width = width, pad = s(22), col_gap = s(18), section_gap = s(24), thumb_gap = s(10), row_gap = s(8) }
     d.inner = width - 2 * d.pad
     d.card_w = math.floor((d.inner - d.col_gap) / 2) -- a pick's width
     d.col_w = math.floor((d.inner - 2 * d.col_gap) / 3) -- a list's width
@@ -145,7 +145,7 @@ function PickRow:buildCard(card)
     local d = self.d
     local book = card.book
     local image = cover(book.path, book.title, d.pick_w, d.pick_h)
-    local text_w = d.card_w - image:getSize().w - d.thumb_gap
+    local text_w = d.card_w - image:getSize().w - d.thumb_gap - s(18) -- and a margin on the right, so a button is not nearer the next cover than its own
     local btn = button(card.button or _("Start reading"), card.solid)
     local room = d.pick_h - btn:getSize().h - s(6)
 
@@ -300,8 +300,13 @@ function PickMenu:setupItemHeights()
     -- the picks: as tall as is left after one row of lists on the same screen, and no wider than a pick's card has room for
     local fixed = first_lists and (d.section_gap + first_lists.body_h) or 0
     local want = self.available_height - fixed - d.section_gap - d.head_h - s(6)
-    d.pick_h = math.max(s(96), math.min(want, math.floor(d.card_w * 0.5 * 1.5)))
+    d.pick_h = math.max(s(96), math.min(want, math.floor(d.card_w * 0.5 * 1.5)) - s(12))
     d.pick_w = math.floor(d.pick_h / 1.5)
+    -- when the whole list fits with room to spare, the space goes between the picks and the lists, not as a hole at the bottom
+    if #self.item_table <= 2 and first_lists then
+        local spare = self.available_height - (d.head_h + d.pick_h) - (d.section_gap + first_lists.body_h)
+        if spare > 0 then d.section_gap = d.section_gap + math.min(spare, s(24)) end
+    end
     local function height(item)
         local top = item.at_top and 0 or d.section_gap
         if item.kind == "picks" then return top + d.head_h + d.pick_h end
