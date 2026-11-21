@@ -220,12 +220,11 @@ function PickRow:buildLists()
         col[#col + 1] = VerticalSpan:new { width = s(8) }
         for _j, book in ipairs(column.books) do
             local text = list_text(book, column.progress, d)
-            local top = math.max(0, math.floor((entry.row_h - text:getSize().h) / 2))
             local line = HorizontalGroup:new {
                 align = "top",
                 cover(book.path, book.title, d.thumb_w, d.thumb_h),
                 HorizontalSpan:new { width = d.thumb_gap },
-                VerticalGroup:new { align = "left", VerticalSpan:new { width = top }, text },
+                text,
             }
             col[#col + 1] = line
             col[#col + 1] = VerticalSpan:new { width = math.max(0, entry.row_h - line:getSize().h) + d.row_gap }
