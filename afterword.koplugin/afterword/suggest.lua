@@ -9,7 +9,7 @@
 --   ctx.status_of    function(path) -> "new" | "reading" | "complete" | "abandoned"  (a book never opened is "new")
 --   ctx.modified_of  function(path) -> when the file was added, a number (larger is newer)
 --   ctx.percent_of   function(path) -> how far through a book you are, 0 to 1 (optional; shown on the books you started)
---   ctx.history      { path, ... } books you have opened, most recent first
+--   ctx.history      { path, ... } books you have opened, most recent first (started books outside it are found in the library)
 --   ctx.collection   { name, paths } a collection chosen in settings, in its own order; or nil
 --   ctx.per_group    how many in each group (default 4, a shelf of covers)
 --
@@ -142,6 +142,24 @@ function Suggest.groups(ctx)
     end
     offer("series", "next_in_series", series)
 
+    -- Pick up where you left off: books you started, most recently opened first, then any other started book that is not in the
+    -- history. Claimed before the lists below so a half-read book is shown once, under its progress, not as a fresh suggestion.
+    local started = {}
+    local listed = {}
+    for _i, path in ipairs(ctx.history or {}) do listed[#listed + 1] = path end
+    local seen = {}
+    for _i, path in ipairs(listed) do seen[path] = true end
+    for _i, r in ipairs(ctx.library or {}) do
+        if not seen[r.path] then listed[#listed + 1] = r.path end
+    end
+    for _i, path in ipairs(listed) do
+        if status_of(path) == "reading" then
+            local percent = math.floor((ctx.percent_of and tonumber(ctx.percent_of(path)) or 0) * 100 + 0.5)
+            take(started, path, percent > 0 and string.format("%d%%", percent) or nil, true, { percent = percent }) -- nothing for a sliver that rounds to 0%
+        end
+    end
+    offer("started", "started", started)
+
     -- 2. More by this author: their other books you have not started, series together and in order. Not this book's own series: that
     -- is the group above, and three more books of it under "more by" is the same suggestion again.
     local me = by_path[ctx.current]
@@ -225,15 +243,6 @@ function Suggest.groups(ctx)
     for _i, r in ipairs(candidates) do take(recent, r.path) end
     offer("recent", "recently_added", recent)
 
-    -- 7. Pick up where you left off: books you started, most recently opened first.
-    local started = {}
-    for _i, path in ipairs(ctx.history or {}) do
-        if status_of(path) == "reading" then
-            local percent = math.floor((ctx.percent_of and tonumber(ctx.percent_of(path)) or 0) * 100 + 0.5)
-            take(started, path, percent > 0 and string.format("%d%%", percent) or nil, true, { percent = percent }) -- nothing for a sliver that rounds to 0%
-        end
-    end
-    offer("started", "started", started)
 
     -- Shown in this order, which is not the order they claim books in: the single picks first, then what you were reading, then lists.
     local rank = { next_in_series = 1, picked_for_you = 2, something_different = 3, started = 4, more_by_author = 5, collection = 6, recently_added = 7 }

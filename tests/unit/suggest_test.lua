@@ -67,6 +67,15 @@ T.test("the current book and finished books are never offered", function()
         end
     end
 end)
+T.test("started: a book you started that is not in the history still shows here, once", function()
+    local groups = Suggest.groups(ctx { history = { "/done" } })
+    T.eq(paths(find(groups, "started")), "/mid")
+    for _i, g in ipairs(groups) do
+        if g.name ~= "started" then
+            for _j, b in ipairs(g.books) do T.eq(b.path == "/mid", false) end
+        end
+    end
+end)
 T.test("recently added: the newest books you have not started", function()
     T.eq(paths(find(Suggest.groups(ctx()), "recent")), "/new2 /new3 /new1")
 end)
