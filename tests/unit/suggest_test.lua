@@ -236,11 +236,11 @@ T.test("the line under a title says the author and which book of the series, whi
     T.eq(Suggest.byline({ authors = "  " }), nil)
 end)
 
-T.test("a group holds five books by default, a shelf of covers", function()
+T.test("a group holds four books by default, a shelf of covers", function()
     local many = {}
     for i = 1, 8 do many[#many + 1] = { path = "/n" .. i, title = "N" .. i, authors = "Someone" .. i } end
     local groups = Suggest.groups({ current = "/x", library = many, status_of = function() return "new" end, modified_of = function(p) return tonumber(p:match("%d+")) end })
-    T.eq(#find(groups, "recent").books, 5)
+    T.eq(#find(groups, "recent").books, 4)
 end)
 
 T.test("a book carries its tags, language and description for the detail sheet", function()

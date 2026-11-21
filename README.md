@@ -21,8 +21,8 @@ When you reach the end of a book, Afterword shows one screen: how the book went,
 The list of what to read next opens from that screen, or any time from **Tools › Afterword › What to read next**:
 
 <p align="center">
-  <img src="assets/pick-next.png" width="260" alt="The list, page 1: a spotlight pick with its reasons, something different, and a shelf of books you are part-way through">
-  <img src="assets/pick-next-2.png" width="260" alt="The list, page 2: your collection and recently added books, as shelves of covers">
+  <img src="assets/pick-next.png" width="260" alt="The list, page 1: a spotlight pick with its reasons, and something different">
+  <img src="assets/pick-next-2.png" width="260" alt="The list, page 2: books you are part-way through, and your collection, as shelves of covers">
   <img src="assets/book-detail.png" width="260" alt="The sheet for one book: cover, author, series, tags, why it was picked, and Start reading">
 </p>
 
@@ -38,7 +38,7 @@ The list of what to read next opens from that screen, or any time from **Tools �
   2. **Pick up where you left off:** books you started and did not finish, as a shelf of covers with how far through each you are.
   3. **More by** the author, **From** a collection you choose (see below), and **Recently added** are shelves too.
 
-  A shelf is up to five covers across, each with its title and author, and a "Book 3" tag on the cover for a book in a series. Page arrows are KOReader's own. **Tap a book for its sheet:** cover, author, series, language, genre tags, why it was picked, and its description when the book has one, with **Start reading** and **Not now**. The **Start** buttons on the cards skip the sheet.
+  A shelf is up to four covers across, each with its title and author and a quiet grey line under them: which book of its series it is ("Book 3"), and how far through it you are. A book with no cover in KOReader's cache gets a plain grey card with its title. Page arrows are KOReader's own. **Tap a book for its sheet:** cover, author, series, language, genre tags, why it was picked, and its description when the book has one, with **Start reading** and **Not now**. The **Start** buttons on the cards skip the sheet.
 
   Picked for you is one unread book that fits your taste, with the books you liked behind it; Something different is for when you want the opposite of the book you are on (or, from the file browser, the one you read last): one unread book that shares none of its tags and none you have rated down, and fits the tags you do like.
 

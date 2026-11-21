@@ -11,7 +11,7 @@
 --   ctx.percent_of   function(path) -> how far through a book you are, 0 to 1 (optional; shown on the books you started)
 --   ctx.history      { path, ... } books you have opened, most recent first
 --   ctx.collection   { name, paths } a collection chosen in settings, in its own order; or nil
---   ctx.per_group    how many in each group (default 5, a shelf of covers)
+--   ctx.per_group    how many in each group (default 4, a shelf of covers)
 --
 -- groups(ctx) -> { { id, name, books = { { path, title, note }, ... } }, ... } with a group left out when it has no books. A book
 -- appears once, in the first group that wants it. A book you have finished is never offered.
@@ -93,7 +93,7 @@ local function title_of(record, path)
 end
 
 function Suggest.groups(ctx)
-    local per = ctx.per_group or 5
+    local per = ctx.per_group or 4
     local by_path = {}
     for _i, r in ipairs(ctx.library or {}) do by_path[r.path] = r end
     local raw_status = ctx.status_of or function() return "new" end

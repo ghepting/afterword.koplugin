@@ -4,8 +4,8 @@
 --   { heading = true, text }                          a group's name
 --   { kind = "hero", book, why, button }              the first single pick: a big cover, the details, a Start reading button
 --   { kind = "card", book, why, button }              any other single pick: a smaller cover and card
---   { kind = "shelf", books, progress = bool }        up to five covers across, each with its title and author (and how far
---                                                     through it you are, when `progress`)
+--   { kind = "shelf", books, progress = bool }        up to four covers across, each with its title, its author, and a quiet grey
+--                                                     line (which book of a series it is, how far through it you are)
 --
 -- A book is { path, title, authors, series, series_index, percent, ... } as Suggest makes it. Tapping a book calls menu.on_detail(book);
 -- the Start buttons call menu.on_open(book). Covers are read from KOReader's book-info cache when a row is drawn, so only the page on
@@ -36,7 +36,7 @@ local _ = require("gettext")
 
 local Screen = Device.screen
 local GREY = Blitbuffer.COLOR_DARK_GRAY
-local SHELF = 5 -- covers across a shelf
+local SHELF = 4 -- covers across a shelf
 
 local function s(n) return Screen:scaleBySize(n) end
 
@@ -48,18 +48,19 @@ end
 
 -- Sizes for a list `width` wide. A cover is always two thirds as wide as it is tall.
 local function dims(width, font_size)
-    local d = { width = width, pad = s(16), gap = s(12), vgap = s(6) }
-    d.shelf_w = math.floor(width * 0.16)
+    local d = { width = width, pad = s(22), gap = s(14), vgap = s(8), caption_gap = s(8) }
+    d.shelf_w = math.floor(width * 0.19)
     d.shelf_gap = math.floor((width - 2 * d.pad - SHELF * (d.shelf_w + 2 * Size.border.thin)) / (SHELF - 1)) -- the rest of the width, between the covers
     d.shelf_h = math.floor(d.shelf_w * 1.5)
-    d.hero_w = math.floor(width * 0.22)
+    d.hero_w = math.floor(width * 0.27)
     d.hero_h = math.floor(d.hero_w * 1.5)
-    d.card_w = math.floor(width * 0.13)
+    d.card_w = math.floor(width * 0.15)
     d.card_h = math.floor(d.card_w * 1.5)
     d.f_title = face(12)
     d.f_author = face(11)
+    d.f_meta = face(11)
     d.f_heading = face(14)
-    d.lh_title, d.lh_author = line_height(d.f_title), line_height(d.f_author)
+    d.lh_title, d.lh_author, d.lh_meta = line_height(d.f_title), line_height(d.f_author), line_height(d.f_meta)
     d.lh_heading = line_height(d.f_heading, true)
     return d
 end
@@ -74,41 +75,33 @@ local function cover(path, title, w, h)
             image = ImageWidget:new { image = info.cover_bb, width = w, height = h, scale_factor = 0 } -- fits the box; frees the picture itself
         end
     end)
-    local inner = image or CenterContainer:new {
-        dimen = Geom:new { w = w, h = h },
-        TextBoxWidget:new { text = title or "?", face = face(13), width = w - s(10), height = h - s(10), height_overflow_show_ellipsis = true },
-    }
-    return FrameContainer:new { bordersize = Size.border.thin, padding = 0, margin = 0, inner }
-end
-
--- A small black tag over a corner of a cover.
-local function tag(text)
+    if image then
+        return FrameContainer:new { bordersize = Size.border.thin, padding = 0, margin = 0, image }
+    end
+    -- No picture in the cache for this book: a soft grey card with its title in the middle, so a missing cover still looks like a book.
+    local grey = Blitbuffer.COLOR_GRAY_E
+    local limit = h - s(20)
+    local text = TextBoxWidget:new { text = title or "?", face = face(13), bold = true, alignment = "center", width = w - s(20), bgcolor = grey }
+    if text:getSize().h > limit then
+        text:free()
+        text = TextBoxWidget:new {
+            text = title or "?", face = face(13), bold = true, alignment = "center", width = w - s(20), bgcolor = grey,
+            height = limit, height_overflow_show_ellipsis = true,
+        }
+    end
     return FrameContainer:new {
-        background = Blitbuffer.COLOR_BLACK, bordersize = 0, margin = 0, padding = s(2), padding_left = s(5), padding_right = s(5),
-        TextWidget:new { text = text, face = face(12), bold = true, fgcolor = Blitbuffer.COLOR_WHITE },
+        background = grey, bordersize = Size.border.thin, padding = 0, margin = 0,
+        CenterContainer:new { dimen = Geom:new { w = w, h = h }, text },
     }
 end
 
--- A cover with "Book 3" over its bottom-left corner when the book is in a series, and `corner` (how far through it you are) over
--- the bottom-right.
-local function cover_with_tags(book, w, h, corner)
-    local frame = cover(book.path, book.title, w, h)
+-- The grey line under a shelf book's author: which book of its series it is, and how far through it you are.
+local function shelf_meta(book, progress)
+    local parts = {}
     local number = tonumber(book.series_index)
-    local group = { frame }
-    local size = frame:getSize()
-    if book.series and book.series ~= "" and number then
-        local badge = tag(string.format(_("Book %s"), string.format("%g", number)))
-        badge.overlap_offset = { 0, size.h - badge:getSize().h }
-        group[#group + 1] = badge
-    end
-    if corner then
-        local badge = tag(corner)
-        badge.overlap_offset = { size.w - badge:getSize().w, size.h - badge:getSize().h }
-        group[#group + 1] = badge
-    end
-    if #group == 1 then return frame end
-    group.dimen = Geom:new { w = size.w, h = size.h }
-    return OverlapGroup:new(group)
+    if book.series and book.series ~= "" and number then parts[#parts + 1] = string.format(_("Book %s"), string.format("%g", number)) end
+    if progress and (tonumber(book.percent) or 0) > 0 then parts[#parts + 1] = string.format("%d%%", book.percent) end
+    return #parts > 0 and table.concat(parts, " \u{00B7} ") or nil
 end
 
 -- Genre pills side by side, as many as fit in `max_width` (up to `limit`).
@@ -228,30 +221,38 @@ function PickRow:buildCard()
     self[1] = LeftContainer:new { dimen = Geom:new { w = d.width, h = self.dimen.h }, row }
 end
 
--- Up to five covers across, each over its title and author.
+-- Up to four covers across, each over its title, its author and a quiet grey line. The titles are as tall as they need to be, and the
+-- authors line up across the row.
 function PickRow:buildShelf()
     local entry, d = self.entry, self.d
     local row = HorizontalGroup:new { align = "top", HorizontalSpan:new { width = d.pad } }
     for i, book in ipairs(entry.books) do
         local cell = VerticalGroup:new { align = "left" }
-        local percent = math.max(0, math.min(100, tonumber(book.percent) or 0))
-        cell[#cell + 1] = cover_with_tags(book, d.shelf_w, d.shelf_h, entry.progress and percent > 0 and (percent .. "%") or nil)
+        cell[#cell + 1] = cover(book.path, book.title, d.shelf_w, d.shelf_h)
         if entry.progress then
-            local bar_w, bar_h = d.shelf_w, s(4)
-            cell[#cell + 1] = VerticalSpan:new { width = s(5) }
+            local percent = math.max(0, math.min(100, tonumber(book.percent) or 0))
+            local bar_w, bar_h = d.shelf_w, s(3)
+            cell[#cell + 1] = VerticalSpan:new { width = s(6) }
             cell[#cell + 1] = OverlapGroup:new {
                 dimen = Geom:new { w = bar_w, h = bar_h },
-                LineWidget:new { dimen = Geom:new { w = bar_w, h = bar_h }, background = Blitbuffer.COLOR_LIGHT_GRAY },
+                LineWidget:new { dimen = Geom:new { w = bar_w, h = bar_h }, background = Blitbuffer.COLOR_GRAY_D },
                 LineWidget:new { dimen = Geom:new { w = math.max(1, math.floor(bar_w * percent / 100)), h = bar_h }, background = Blitbuffer.COLOR_BLACK },
             }
         end
-        cell[#cell + 1] = VerticalSpan:new { width = s(4) }
-        cell[#cell + 1] = TextBoxWidget:new {
-            text = book.title or "?", face = d.f_title, width = d.shelf_w, height = 2 * d.lh_title, height_overflow_show_ellipsis = true,
-        }
+        cell[#cell + 1] = VerticalSpan:new { width = d.caption_gap }
+        local title = capped_text(book.title or "?", d.f_title, d.shelf_w, 2)
+        cell[#cell + 1] = title
+        local spare = (entry.title_h or 0) - title:getSize().h
+        if spare > 0 then cell[#cell + 1] = VerticalSpan:new { width = spare } end
         local author = book.authors and tostring(book.authors):gsub("\n", ", ") or ""
         if author ~= "" then
             cell[#cell + 1] = TextWidget:new { text = author, face = d.f_author, fgcolor = GREY, max_width = d.shelf_w, truncate_with_ellipsis = true }
+        else
+            cell[#cell + 1] = VerticalSpan:new { width = d.lh_author }
+        end
+        local meta = shelf_meta(book, entry.progress)
+        if meta then
+            cell[#cell + 1] = TextWidget:new { text = meta, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.shelf_w, truncate_with_ellipsis = true }
         end
         row[#row + 1] = cell
         if i < #entry.books then row[#row + 1] = HorizontalSpan:new { width = d.shelf_gap } end
@@ -288,20 +289,33 @@ local PickMenu = Menu:extend {}
 -- How tall each row is, and which rows fit on which page: Menu's own rule, with this module's row heights.
 function PickMenu:setupItemHeights()
     local d = dims(self.inner_dimen.w, self.font_size)
-    d.heading_gap = math.floor(d.lh_heading * 0.5) -- white space above a group's name, except at the top of a page
+    d.heading_gap = math.floor(d.lh_heading * 1.1) -- white space above a group's name, except at the top of a page
     self.dims = d
+    -- A shelf's captions are as tall as the tallest title in it needs: measured once, kept on the row.
+    local function measure_shelf(item)
+        if item.measured_width == d.shelf_w then return end
+        local title_h, meta = 0, false
+        for _i, book in ipairs(item.books) do
+            local title = capped_text(book.title or "?", d.f_title, d.shelf_w, 2)
+            title_h = math.max(title_h, title:getSize().h)
+            title:free()
+            if shelf_meta(book, item.progress) then meta = true end
+        end
+        item.title_h, item.has_meta, item.measured_width = title_h, meta, d.shelf_w
+    end
     local function height(item, at_top)
         if item.heading then
             item.at_top = at_top
-            return d.lh_heading + s(4) + (at_top and 0 or d.heading_gap)
+            return d.lh_heading + s(8) + (at_top and 0 or d.heading_gap)
         elseif item.kind == "hero" then
             return d.hero_h + 2 * d.vgap
         elseif item.kind == "card" then
             return d.card_h + 2 * d.vgap
         end
-        -- a shelf: the covers, then (for what you are reading) a bar and a percentage, then the title and the author
-        local progress = item.progress and (s(5) + s(4)) or 0
-        return d.vgap + d.shelf_h + progress + s(4) + 2 * d.lh_title + d.lh_author + d.vgap
+        -- a shelf: the covers, then (for what you are reading) a thin bar, then the title, the author and a grey line
+        measure_shelf(item)
+        local bar = item.progress and (s(6) + s(3)) or 0
+        return d.vgap + d.shelf_h + bar + d.caption_gap + item.title_h + d.lh_author + (item.has_meta and d.lh_meta or 0) + d.vgap
     end
     self.page_items = {}
     local items, used = {}, 0
