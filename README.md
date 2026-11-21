@@ -37,7 +37,7 @@ When you reach the end of a book, Afterword shows one screen: how the book went,
 
 **Nothing is suggested out of order in a series.** A book in a series is only offered as something new when every lower-numbered book of that series you own is finished, so book 3 never appears while book 2 is unread, half read or on hold (a gap in what you own is skipped). It applies to every group, your collection included, except "Pick up where you left off", which is about books you already started. A series book with no number cannot be placed, so it is not offered.
 
-A book that belongs to a series says which one it is, like "(Book 3 of Children of Time)", and a long title wraps onto a second line.
+A book that belongs to a series says which one it is on a second line in smaller grey text, like "Book 3 of Children of Time". A long title is cut with an ellipsis rather than wrapped, so every row starts at the same left edge.
 
 **Picked for you** is worked out on the device from what KOReader already knows. A book you rated 4 or 5 counts for its genre tags, a 3 a little, a 1 or 2 against them; a book you finished without rating counts a little for them, and one you put on hold a little against. An unread book is scored by how many of its tags you have liked, with rare tags counting for more than ones nearly everything has, and books in a language you do not read are left out. It needs at least two books you liked before it will guess, and books with no tags are never offered. Nothing is sent anywhere.
 

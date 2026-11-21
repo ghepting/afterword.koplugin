@@ -226,7 +226,7 @@ end
 -- open book has been finished, so its sequel is next in line although it may not be marked finished yet.
 function Afterword:showPicker(info, on_open, opts)
     opts = opts or {}
-    local Menu = require("ui/widget/menu")
+    local PickMenu = require("afterword/picklist")
     local groups = self:suggestions(info.file, opts.without, opts.just_finished)
     local first_author = info.author and info.author:match("^[^,]+") or nil
     local heading = {
@@ -240,11 +240,10 @@ function Afterword:showPicker(info, on_open, opts)
     }
     local items = {}
     for _i, g in ipairs(groups) do
-        items[#items + 1] = { text = (heading[g.name] or function() return g.name end)(g), bold = true, dim = true, callback = function() end }
+        items[#items + 1] = { text = (heading[g.name] or function() return g.name end)(g), heading = true, callback = function() end }
         for _j, book in ipairs(g.books) do
-            local series = Suggest.series_text(book)
             items[#items + 1] = {
-                text = "    " .. book.title .. (series and (" (" .. series .. ")") or ""), mandatory = book.note,
+                text = book.title, subtitle = Suggest.series_text(book), mandatory = book.note,
                 callback = function() on_open(book.path) end,
             }
         end
@@ -254,9 +253,9 @@ function Afterword:showPicker(info, on_open, opts)
         return
     end
     local menu
-    menu = Menu:new {
-        title = opts.title or _("Pick next"), item_table = items, items_max_lines = 2, -- a long title and its series wrap, not cut off
-         is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
+    menu = PickMenu:new {
+        title = opts.title or _("Pick next"), item_table = items, items_max_lines = 2, -- rows of different heights: PickMenu measures and draws them
+        is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
         close_callback = function() UIManager:close(menu) end,
     }
     self.picker = menu
