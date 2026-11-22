@@ -68,7 +68,19 @@ end
 -- Why a suggestion was made, in a sentence: `short` for a card, `long` for the detail sheet. Both are nil when there is nothing to say.
 function Suggest.explain(group_name, book, group)
     local liked, tags = book.because or {}, book.matched or {}
-    if group_name == "picked_for_you" and #liked > 0 then
+    if group_name == "picked_for_you" and book.fallback == "start" then
+        local line = Suggest.series_text(book)
+        if line and tonumber(book.series_index) == 1 then
+            return T(_("%1, a good place to start"), line), T(_("%1, a good place to start."), line)
+        end
+        return _("One of your newest books"), _("One of the newest books in your library.")
+    elseif group_name == "something_different" and book.fallback then
+        local tag = (book.matched or {})[1]
+        if tag then
+            return T(_("Less common in your library: %1"), tag), T(_("Not many books in your library are %1."), tag)
+        end
+        return _("A change from most of your library"), _("An author you have few books from, a change from most of your library.")
+    elseif group_name == "picked_for_you" and #liked > 0 then
         local short = T(_("Because you liked %1"), and_join(liked))
         if #tags == 0 then return short, short .. "." end
         return short, T(_("You liked %1. They share %2 with this book."), and_join(liked), and_join(tags))
@@ -203,6 +215,32 @@ function Suggest.groups(ctx)
         local pick = Taste.pick { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, allowed = eligible }
         if pick then take(foryou, pick.path, table.concat(pick.tags, " \u{00B7} "), false, { because = pick.because, matched = pick.tags }) end
     end
+    -- With no taste to go on yet (a new device, or nothing rated): a good place to start. The first book of a series you own, else
+    -- the newest book.
+    local function newest_first(list)
+        local when = {}
+        for _i, r in ipairs(list) do when[r.path] = tonumber((ctx.modified_of or function() return 0 end)(r.path)) or 0 end
+        table.sort(list, function(a, b)
+            if when[a.path] ~= when[b.path] then return when[a.path] > when[b.path] end
+            return tostring(a.path) < tostring(b.path)
+        end)
+        return list
+    end
+    local function unread()
+        local list = {}
+        for _i, r in ipairs(ctx.library or {}) do
+            if r.path ~= ctx.current and not taken[r.path] and status_of(r.path) == "new" and eligible(r.path) then list[#list + 1] = r end
+        end
+        return newest_first(list)
+    end
+    if #foryou == 0 and ctx.rating_of then
+        local list, firsts = unread(), {}
+        for _i, r in ipairs(list) do
+            if norm(r.series) ~= "" and tonumber(r.series_index) == 1 then firsts[#firsts + 1] = r end
+        end
+        local pick = firsts[1] or list[1]
+        if pick then take(foryou, pick.path, nil, false, { fallback = "start" }) end
+    end
     offer("for_you", "picked_for_you", foryou)
 
     -- Something different: for when you want the opposite of the book you are on. One unread book with no tag of this one that
@@ -224,6 +262,30 @@ function Suggest.groups(ctx)
             take(different, pick.path, table.concat(pick.tags, " \u{00B7} "), false,
                 { because = pick.because, matched = pick.tags, against = title_of(by_path[anchor], anchor) })
         end
+    end
+    -- With nothing to be the opposite of: a book unlike most of the library. One carrying a tag few other books have, else one by an
+    -- author you have few books from.
+    if #different == 0 and ctx.rating_of then
+        local list = unread()
+        local count, authors = {}, {}
+        for _i, r in ipairs(ctx.library or {}) do
+            for _j, t in ipairs(Taste.tags(r)) do count[t.key] = (count[t.key] or 0) + 1 end
+            for name in pairs(authors_of(r)) do authors[name] = (authors[name] or 0) + 1 end
+        end
+        local best, best_n, best_tag
+        for _i, r in ipairs(list) do
+            for _j, t in ipairs(Taste.tags(r)) do
+                if not best_n or count[t.key] < best_n then best, best_n, best_tag = r, count[t.key], t.label end
+            end
+        end
+        if not best then
+            for _i, r in ipairs(list) do
+                local fewest
+                for name in pairs(authors_of(r)) do fewest = math.min(fewest or math.huge, authors[name]) end
+                if fewest and (not best_n or fewest < best_n) then best, best_n = r, fewest end
+            end
+        end
+        if best then take(different, best.path, nil, false, { fallback = "different", matched = best_tag and { best_tag } or nil }) end
     end
     offer("different", "something_different", different)
 
