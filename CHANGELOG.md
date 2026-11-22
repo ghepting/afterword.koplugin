@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/ghepting/afterword.koplugin/compare/v0.5.0...v0.6.0) (2026-11-22)
+
+
+### Features
+
+* fall back to a good place to start when there is no taste to go on ([#13](https://github.com/ghepting/afterword.koplugin/issues/13)) ([d7ab1ab](https://github.com/ghepting/afterword.koplugin/commit/d7ab1abb37f1eaa70f6ea9e88edeabc306d2e730))
+
 ## [0.5.0](https://github.com/ghepting/afterword.koplugin/compare/v0.4.0...v0.5.0) (2026-11-22)
 
 
