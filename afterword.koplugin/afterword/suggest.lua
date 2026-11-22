@@ -1,5 +1,6 @@
 -- What to read next, in groups. No KOReader in here: everything it needs comes in through `ctx`.
 --
+--   ctx.follow       path of the book you read last, when none is open (the file browser): the series and the author follow on from it
 --   ctx.current      path of the book just finished, or the one open now (never suggested); nil when none is open
 --   ctx.finished     path of the book just finished, counted as finished although it may not be marked so yet (end of a book)
 --   ctx.without      { next_in_series = true, more_by_author = true } groups to leave out (they are about ctx.current)
@@ -95,6 +96,8 @@ function Suggest.explain(group_name, book, group)
         return nil, T(_("You are %1 through it."), book.percent .. "%")
     elseif group_name == "collection" and group.collection_name then
         return nil, T(_("From your collection %1."), group.collection_name)
+    elseif group_name == "on_hold" then
+        return nil, _("You put this one on hold.")
     elseif group_name == "recently_added" then
         return nil, _("Recently added to your library.")
     end
@@ -118,6 +121,7 @@ function Suggest.groups(ctx)
     local without = ctx.without or {}
     local taken = {}
     if ctx.current then taken[ctx.current] = true end
+    local base = ctx.current or ctx.follow -- the book the series and the author follow on from
     local out = {}
 
     local function offer(id, name, books)
@@ -147,7 +151,7 @@ function Suggest.groups(ctx)
 
     -- 1. The next book in the series: the first one after this that you have not finished.
     local series = {}
-    for _i, r in ipairs(without.next_in_series and {} or Series.after(ctx.library or {}, ctx.current)) do
+    for _i, r in ipairs(without.next_in_series and {} or Series.after(ctx.library or {}, base)) do
         if #series == 0 and status_of(r.path) ~= "complete" then
             take(series, r.path)
         end
@@ -174,14 +178,14 @@ function Suggest.groups(ctx)
 
     -- 2. More by this author: their other books you have not started, series together and in order. Not this book's own series: that
     -- is the group above, and three more books of it under "more by" is the same suggestion again.
-    local me = by_path[ctx.current]
+    local me = by_path[base]
     local mine = me and authors_of(me) or {}
     local author = {}
     if next(mine) and not without.more_by_author then
         local others = {}
         for _i, r in ipairs(ctx.library or {}) do
             local same_series = me and norm(me.series) ~= "" and norm(r.series) == norm(me.series)
-            if r.path ~= ctx.current and not same_series and shares_author(mine, authors_of(r)) and status_of(r.path) == "new" then
+            if r.path ~= base and not same_series and shares_author(mine, authors_of(r)) and status_of(r.path) == "new" then
                 others[#others + 1] = r
             end
         end
@@ -201,6 +205,9 @@ function Suggest.groups(ctx)
         for _i, r in ipairs(others) do take(author, r.path) end
     end
     offer("author", "more_by_author", author)
+    if out[#out] and out[#out].id == "author" then
+        out[#out].author_name = tostring(me and me.authors or ""):match("[^\n]+")
+    end
 
     -- 3. Your collection: its first books, in its own order, that you have not finished.
     local collection = {}
@@ -304,10 +311,26 @@ function Suggest.groups(ctx)
     end)
     for _i, r in ipairs(candidates) do take(recent, r.path) end
     offer("recent", "recently_added", recent)
+    -- Nothing new to offer: the books you put on hold, the one that has waited longest first.
+    if #recent == 0 then
+        local held = {}
+        for _i, r in ipairs(ctx.library or {}) do
+            if not taken[r.path] and status_of(r.path) == "abandoned" then held[#held + 1] = r end
+        end
+        local waited = {}
+        for _i, r in ipairs(held) do waited[r.path] = tonumber(modified_of(r.path)) or 0 end
+        table.sort(held, function(a, b)
+            if waited[a.path] ~= waited[b.path] then return waited[a.path] < waited[b.path] end
+            return tostring(a.path) < tostring(b.path)
+        end)
+        local on_hold = {}
+        for _i, r in ipairs(held) do take(on_hold, r.path, nil, true) end
+        offer("on_hold", "on_hold", on_hold)
+    end
 
 
     -- Shown in this order, which is not the order they claim books in: the single picks first, then what you were reading, then lists.
-    local rank = { next_in_series = 1, picked_for_you = 2, something_different = 3, started = 4, more_by_author = 5, collection = 6, recently_added = 7 }
+    local rank = { next_in_series = 1, picked_for_you = 2, something_different = 3, started = 4, more_by_author = 5, collection = 6, recently_added = 7, on_hold = 8 }
     table.sort(out, function(a, b) return (rank[a.name] or 99) < (rank[b.name] or 99) end)
     return out
 end

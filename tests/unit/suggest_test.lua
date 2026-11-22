@@ -358,3 +358,22 @@ T.test("the fallback picks stand aside once there is a taste to go on", function
     if pick then T.eq(pick.books[1].fallback, nil) end
 end)
 
+T.test("from the file browser the series and the author follow on from the book you read last", function()
+    local c = ctx { current = nil, finished = nil, follow = "/s4", history = { "/s4", "/done" } }
+    local groups = Suggest.groups(c)
+    T.eq(paths(find(groups, "series")), "/s5") -- Lethal White is finished, so Troubled Blood is next
+    local author = find(groups, "author")
+    T.eq(author.author_name, "Robert Galbraith")
+    T.eq(author ~= nil and paths(author):find("/s5", 1, true) == nil, true) -- not this series again
+end)
+
+T.test("books you put on hold are offered when nothing is new", function()
+    local lib = { bk("/h1", "Old Hold", "A"), bk("/h2", "Older Hold", "B"), bk("/d1", "Done", "C") }
+    local st = { ["/h1"] = "abandoned", ["/h2"] = "abandoned", ["/d1"] = "complete" }
+    local when2 = { ["/h1"] = 200, ["/h2"] = 100 }
+    local groups = Suggest.groups {
+        library = lib, status_of = function(p) return st[p] or "new" end, modified_of = function(p) return when2[p] or 0 end, history = {},
+    }
+    T.eq(paths(find(groups, "on_hold")), "/h2 /h1") -- the one that has waited longest first
+    T.eq(find(groups, "recent"), nil)
+end)

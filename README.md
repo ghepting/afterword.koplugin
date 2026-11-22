@@ -45,6 +45,8 @@ It is one screen, in portrait or landscape; the picks' covers take whatever heig
 
 **Picked for you** is worked out on the device from what KOReader already knows. A book you rated 4 or 5 counts for its genre tags, a 3 a little, a 1 or 2 against them; a book you finished without rating counts a little for them, and one you put on hold a little against. An unread book is scored by how many of its tags you have liked, with rare tags counting for more than ones nearly everything has, and books in a language you do not read are left out. It needs at least two books you liked before it will guess, and books with no tags are never offered. Nothing is sent anywhere.
 
+**A new device still gets picks.** With no history or ratings yet, Picked for you is the first book of a series you own (or your newest book) and says it is a good place to start, and Something different is a book with a tag few others in your library have (or by an author you have few books from). Both give way as soon as there is a taste to go on. If nothing is new, the books you put on hold appear under **On hold**.
+
 The screenshots are from the KOReader desktop emulator, with reading numbers made up for the picture.
 
 ## Settings
@@ -52,7 +54,7 @@ The screenshots are from the KOReader desktop emulator, with reading numbers mad
 **Tools › Afterword**, in a book or in the file browser:
 
 - **Show at the end of a book.** On by default. Off, KOReader's own end-of-book popup is used as before.
-- **What to read next.** The same list, whenever you want it, from a book you have open or from the file browser: for when you started a book and are not into it. It leaves out the next-in-series and more-by groups, which are about the book you are leaving, and it does not touch that book: it stays "reading" and turns up under "Keep reading". It is also in KOReader's action list (**Afterword: what to read next**), so a gesture, profile or hotkey can start it.
+- **What to read next.** The same list, whenever you want it, from a book you have open or from the file browser: for when you started a book and are not into it. From a book you have open it leaves out the next-in-series and more-by groups, which are about the book you are leaving; from the file browser they follow on from the book you read last. It does not touch the open book: it stays "reading" and turns up under "Keep reading". It is also in KOReader's action list (**Afterword: what to read next**), so a gesture, profile or hotkey can start it.
 - **Suggest from a collection….** Pick any KOReader collection, and Pick next also offers its first books, in its own order. A Bookshelf shelf is a collection, so it works with one. Choose **None** to turn it off.
 - **Check for updates.** Asks GitHub whether a newer Afterword has been released, only when you tap it. If there is one it shows the release notes and offers to download it, check it against GitHub's checksum, install it and restart KOReader. If anything goes wrong nothing is changed, and the old version is kept as `afterword.koplugin.old`. A copy that is a link to a source checkout is not updated from here.
 
