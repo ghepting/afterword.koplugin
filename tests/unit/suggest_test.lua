@@ -315,3 +315,65 @@ T.test("the other groups explain themselves in the detail sheet only", function(
 end)
 
 T.done()
+
+T.test("a new device with no taste yet still gets two picks: the start of a series, and something unlike the rest", function()
+    local lib = {
+        { path = "/a1", title = "Saga One", authors = "Ann", series = "Saga", series_index = 1, keywords = "Fantasy" },
+        { path = "/a2", title = "Saga Two", authors = "Ann", series = "Saga", series_index = 2, keywords = "Fantasy" },
+        { path = "/f1", title = "Fantasy Alone", authors = "Bo", keywords = "Fantasy" },
+        { path = "/f2", title = "More Fantasy", authors = "Cy", keywords = "Fantasy" },
+        { path = "/w1", title = "A Western", authors = "Di", keywords = "Western" },
+        { path = "/n1", title = "Newest", authors = "Ed", keywords = "Fantasy" },
+    }
+    local when = { ["/n1"] = 500 }
+    local groups = Suggest.groups {
+        library = lib, status_of = function() return "new" end, rating_of = function() return 0 end,
+        modified_of = function(p) return when[p] or 0 end, history = {},
+    }
+    local start, different = find(groups, "for_you"), find(groups, "different")
+    T.eq(paths(start), "/a1") -- the first book of a series beats the newest book
+    T.eq(paths(different), "/w1") -- the tag the fewest others carry
+    local short = Suggest.explain("picked_for_you", start.books[1], start)
+    T.eq(short, "Book 1 of Saga, a good place to start")
+    T.eq((Suggest.explain("something_different", different.books[1], different)), "Less common in your library: Western")
+end)
+
+T.test("with no series and no tags the fallback picks are the newest book and an author you have few books from", function()
+    local lib = {
+        { path = "/x1", title = "X1", authors = "Ann" }, { path = "/x2", title = "X2", authors = "Ann" },
+        { path = "/y1", title = "Y1", authors = "Bo" }, { path = "/z1", title = "Z1", authors = "Ann" },
+    }
+    local when = { ["/x2"] = 900, ["/z1"] = 100 }
+    local groups = Suggest.groups {
+        library = lib, status_of = function() return "new" end, rating_of = function() return 0 end,
+        modified_of = function(p) return when[p] or 0 end, history = {},
+    }
+    T.eq(paths(find(groups, "for_you")), "/x2")
+    T.eq(paths(find(groups, "different")), "/y1")
+end)
+
+T.test("the fallback picks stand aside once there is a taste to go on", function()
+    local groups = Suggest.groups(ctx())
+    local pick = find(groups, "for_you")
+    if pick then T.eq(pick.books[1].fallback, nil) end
+end)
+
+T.test("from the file browser the series and the author follow on from the book you read last", function()
+    local c = ctx { current = nil, finished = nil, follow = "/s4", history = { "/s4", "/done" } }
+    local groups = Suggest.groups(c)
+    T.eq(paths(find(groups, "series")), "/s5") -- Lethal White is finished, so Troubled Blood is next
+    local author = find(groups, "author")
+    T.eq(author.author_name, "Robert Galbraith")
+    T.eq(author ~= nil and paths(author):find("/s5", 1, true) == nil, true) -- not this series again
+end)
+
+T.test("books you put on hold are offered when nothing is new", function()
+    local lib = { bk("/h1", "Old Hold", "A"), bk("/h2", "Older Hold", "B"), bk("/d1", "Done", "C") }
+    local st = { ["/h1"] = "abandoned", ["/h2"] = "abandoned", ["/d1"] = "complete" }
+    local when2 = { ["/h1"] = 200, ["/h2"] = 100 }
+    local groups = Suggest.groups {
+        library = lib, status_of = function(p) return st[p] or "new" end, modified_of = function(p) return when2[p] or 0 end, history = {},
+    }
+    T.eq(paths(find(groups, "on_hold")), "/h2 /h1") -- the one that has waited longest first
+    T.eq(find(groups, "recent"), nil)
+end)

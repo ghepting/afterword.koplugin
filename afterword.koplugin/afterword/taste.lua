@@ -43,6 +43,9 @@ local function weight(status, rating)
     return 0
 end
 
+-- A record's usable genre tags, each { key, label }.
+function Taste.tags(record) return tags_of(record) end
+
 -- Whether a library record has any usable genre tags.
 function Taste.tagged(record)
     return record ~= nil and #tags_of(record) > 0

@@ -207,7 +207,7 @@ function Afterword:suggestions(file, without, just_finished)
     end
     local lfs = require("libs/libkoreader-lfs")
     return Suggest.groups {
-        current = file, finished = just_finished and file or nil, library = library, status_of = status_of, without = without,
+        current = file, follow = (not file) and history[1] or nil, finished = just_finished and file or nil, library = library, status_of = status_of, without = without,
         rating_of = function(path)
             local info = require("ui/widget/booklist").getBookInfo(path)
             return info and tonumber(info.rating) or 0
@@ -231,11 +231,15 @@ function Afterword:showPicker(info, on_open, opts)
     local first_author = info.author and info.author:match("^[^,]+") or nil
     local heading = {
         next_in_series = function() return _("Next in the series") end,
-        more_by_author = function() return first_author and T(_("More by %1"), first_author) or _("More by this author") end,
+        more_by_author = function(g)
+            local who = first_author or g.author_name
+            return who and T(_("More by %1"), who) or _("More by this author")
+        end,
         collection = function(g) return T(_("From %1"), g.collection_name or "") end,
         picked_for_you = function() return _("Picked for you") end,
         something_different = function() return _("Something different") end,
         recently_added = function() return _("Recently added") end,
+        on_hold = function() return _("On hold") end,
         started = function() return _("Keep reading") end,
     }
     -- The first two single picks sit side by side at the top; every other group (and any further single pick) is a column of books
@@ -291,7 +295,9 @@ end
 function Afterword:showWhatNext()
     local file = self.ui.document and self.ui.document.file
     self:showPicker({ file = file }, function(path) self:openBook(path) end, {
-        title = _("What to read next"), without = { next_in_series = true, more_by_author = true },
+        title = _("What to read next"),
+        -- Those two are about the book you are leaving; from the file browser they follow on from the book you read last.
+        without = file and { next_in_series = true, more_by_author = true } or nil,
     })
 end
 
