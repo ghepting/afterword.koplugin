@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/ghepting/afterword.koplugin/compare/v0.4.0...v0.5.0) (2026-11-22)
+
+
+### Features
+
+* an Afterword header on the list, page arrows only when needed ([#11](https://github.com/ghepting/afterword.koplugin/issues/11)) ([98e6f21](https://github.com/ghepting/afterword.koplugin/commit/98e6f217e599f11b2c227e371dd13d3913c4f029))
+
 ## [0.4.0](https://github.com/ghepting/afterword.koplugin/compare/v0.3.0...v0.4.0) (2026-11-22)
 
 
