@@ -305,7 +305,13 @@ function PickMenu:layout(avail)
     end
     -- how many rows a list may have: the picks above need a cover worth looking at, so on a short (landscape) screen the lists are shorter
     local pick_min = s(140)
-    local fit = math.floor((avail - lead - 2 * d.section_gap - 2 * d.head_h - pick_min - s(6) + d.row_gap) / (row_h + d.row_gap))
+    local blocks = 0 -- how many rows of lists share the screen: each needs a heading and a gap, and its rows come out of the same space
+    for _i, item in ipairs(self.item_table) do
+        if item.kind == "lists" then blocks = blocks + 1 end
+    end
+    blocks = math.max(blocks, 1)
+    local fit = math.floor((avail - lead - (blocks + 1) * (d.section_gap + d.head_h) - pick_min - s(6) + blocks * d.row_gap)
+        / (blocks * (row_h + d.row_gap)))
     local rows = math.max(2, fit)
     local first_lists
     for i, item in ipairs(self.item_table) do
