@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/ghepting/afterword.koplugin/compare/v0.3.0...v0.4.0) (2026-11-22)
+
+
+### Features
+
+* a spotlight pick, cards and shelves of covers, and a sheet for each book ([#7](https://github.com/ghepting/afterword.koplugin/issues/7)) ([ab4b400](https://github.com/ghepting/afterword.koplugin/commit/ab4b400f3d3b842e1b7334a7a83c6d27c95bf219))
+
 ## [0.3.0](https://github.com/ghepting/afterword.koplugin/compare/v0.2.0...v0.3.0) (2026-11-21)
 
 
