@@ -12,22 +12,17 @@
   A plugin for <a href="https://github.com/koreader/koreader">KOReader</a>.
 </p>
 
-When you reach the end of a book, Afterword shows one screen: how the book went, a place to rate it, and what to read next.
+When you reach the end of a book, Afterword shows one screen over the last page: how the book went, a place to rate it, and what to read next. **Pick next…** opens a list of what to read, which is also there any time from **Tools › Afterword › What to read next**.
 
 <p align="center">
-  <img src="assets/screen.png" width="360" alt="The screen at the end of Career of Evil: cover, series, how long it took, rating, and the next book">
-</p>
-
-The list of what to read next opens from that screen, or any time from **Tools › Afterword › What to read next**:
-
-<p align="center">
-  <img src="assets/pick-next.png" width="260" alt="The list in portrait: two picks side by side with a cover each and a line on why, then Keep reading, your collection and Recently added as columns of small-cover rows">
+  <img src="assets/screen.png" width="400" alt="A Kobo showing the end of Career of Evil, with a card over the last page: cover, series, how long it took, rating, and the next book">
+  <img src="assets/pick-next.png" width="400" alt="The list of what to read next in portrait: two picks side by side with a cover each and a line on why, then Keep reading, your collection and Recently added as columns of small-cover rows">
 </p>
 
 It is one screen, in portrait or landscape; the picks' covers take whatever height the lists leave:
 
 <p align="center">
-  <img src="assets/pick-next-landscape.png" width="420" alt="The same list in landscape">
+  <img src="assets/pick-next-landscape.png" width="640" alt="The same list on a Kobo held sideways">
 </p>
 
 ## What it shows
