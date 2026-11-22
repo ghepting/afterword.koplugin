@@ -9,9 +9,9 @@
 --   ctx.status_of    function(path) -> "new" | "reading" | "complete" | "abandoned"  (a book never opened is "new")
 --   ctx.modified_of  function(path) -> when the file was added, a number (larger is newer)
 --   ctx.percent_of   function(path) -> how far through a book you are, 0 to 1 (optional; shown on the books you started)
---   ctx.history      { path, ... } books you have opened, most recent first
+--   ctx.history      { path, ... } books you have opened, most recent first (started books outside it are found in the library)
 --   ctx.collection   { name, paths } a collection chosen in settings, in its own order; or nil
---   ctx.per_group    how many in each group (default 3)
+--   ctx.per_group    how many in each group (default 4, a shelf of covers)
 --
 -- groups(ctx) -> { { id, name, books = { { path, title, note }, ... } }, ... } with a group left out when it has no books. A book
 -- appears once, in the first group that wants it. A book you have finished is never offered.
@@ -59,12 +59,41 @@ function Suggest.byline(book)
     return table.concat(parts, " \u{00B7} ")
 end
 
+-- "A and B" for two titles, "A" for one.
+local function and_join(list)
+    if #list >= 2 then return T(_("%1 and %2"), list[1], list[2]) end
+    return list[1] or ""
+end
+
+-- Why a suggestion was made, in a sentence: `short` for a card, `long` for the detail sheet. Both are nil when there is nothing to say.
+function Suggest.explain(group_name, book, group)
+    local liked, tags = book.because or {}, book.matched or {}
+    if group_name == "picked_for_you" and #liked > 0 then
+        local short = T(_("Because you liked %1"), and_join(liked))
+        if #tags == 0 then return short, short .. "." end
+        return short, T(_("You liked %1. They share %2 with this book."), and_join(liked), and_join(tags))
+    elseif group_name == "something_different" and book.against then
+        local like = tags[1] or (book.tags or {})[1]
+        if not like then return nil, T(_("Nothing in common with %1."), book.against) end
+        return T(_("Nothing in common with %1, but you like %2"), book.against, like),
+            T(_("Nothing in common with %1, but you like %2."), book.against, like)
+    elseif group_name == "next_in_series" and book.series then
+        return nil, T(_("The next book in %1."), book.series)
+    elseif group_name == "started" and (book.percent or 0) > 0 then
+        return nil, T(_("You are %1 through it."), book.percent .. "%")
+    elseif group_name == "collection" and group.collection_name then
+        return nil, T(_("From your collection %1."), group.collection_name)
+    elseif group_name == "recently_added" then
+        return nil, _("Recently added to your library.")
+    end
+end
+
 local function title_of(record, path)
     return record and record.title or tostring(path):match("([^/]+)%.%w+$") or tostring(path)
 end
 
 function Suggest.groups(ctx)
-    local per = ctx.per_group or 3
+    local per = ctx.per_group or 4
     local by_path = {}
     for _i, r in ipairs(ctx.library or {}) do by_path[r.path] = r end
     local raw_status = ctx.status_of or function() return "new" end
@@ -84,15 +113,24 @@ function Suggest.groups(ctx)
     end
     -- Adds a book to a group when it is not the current one, not finished, and not already in an earlier group.
     -- `resume`: a book you already started, which is not "out of order" whatever its place in a series.
-    local function take(group, path, note, resume)
+    -- `extra`: more to say about the book (why it was picked, how far through it you are), merged into what it carries.
+    local function take(group, path, note, resume, extra)
         if #group >= per or taken[path] or status_of(path) == "complete" then return end
         if not resume and not eligible(path) then return end
         taken[path] = true
         local record = by_path[path]
-        group[#group + 1] = {
+        local tags = {}
+        for line in tostring(record and record.keywords or ""):gmatch("[^\n]+") do
+            local tag = line:gsub("^%s+", ""):gsub("%s+$", "")
+            if tag ~= "" then tags[#tags + 1] = tag end
+        end
+        local book = {
             path = path, title = title_of(record, path), note = note,
             series = record and record.series, series_index = record and record.series_index, authors = record and record.authors,
+            tags = tags, language = record and record.language, description = record and record.description,
         }
+        for key, value in pairs(extra or {}) do book[key] = value end
+        group[#group + 1] = book
     end
 
     -- 1. The next book in the series: the first one after this that you have not finished.
@@ -103,6 +141,24 @@ function Suggest.groups(ctx)
         end
     end
     offer("series", "next_in_series", series)
+
+    -- Pick up where you left off: books you started, most recently opened first, then any other started book that is not in the
+    -- history. Claimed before the lists below so a half-read book is shown once, under its progress, not as a fresh suggestion.
+    local started = {}
+    local listed = {}
+    for _i, path in ipairs(ctx.history or {}) do listed[#listed + 1] = path end
+    local seen = {}
+    for _i, path in ipairs(listed) do seen[path] = true end
+    for _i, r in ipairs(ctx.library or {}) do
+        if not seen[r.path] then listed[#listed + 1] = r.path end
+    end
+    for _i, path in ipairs(listed) do
+        if status_of(path) == "reading" then
+            local percent = math.floor((ctx.percent_of and tonumber(ctx.percent_of(path)) or 0) * 100 + 0.5)
+            take(started, path, percent > 0 and string.format("%d%%", percent) or nil, true, { percent = percent }) -- nothing for a sliver that rounds to 0%
+        end
+    end
+    offer("started", "started", started)
 
     -- 2. More by this author: their other books you have not started, series together and in order. Not this book's own series: that
     -- is the group above, and three more books of it under "more by" is the same suggestion again.
@@ -145,7 +201,7 @@ function Suggest.groups(ctx)
     local foryou = {}
     if ctx.rating_of then
         local pick = Taste.pick { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, allowed = eligible }
-        if pick then take(foryou, pick.path, table.concat(pick.tags, " \u{00B7} ")) end
+        if pick then take(foryou, pick.path, table.concat(pick.tags, " \u{00B7} "), false, { because = pick.because, matched = pick.tags }) end
     end
     offer("for_you", "picked_for_you", foryou)
 
@@ -164,7 +220,10 @@ function Suggest.groups(ctx)
     end
     if ctx.rating_of and anchor then
         local pick = Taste.contrast { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, allowed = eligible, current = anchor }
-        if pick then take(different, pick.path, table.concat(pick.tags, " \u{00B7} ")) end
+        if pick then
+            take(different, pick.path, table.concat(pick.tags, " \u{00B7} "), false,
+                { because = pick.because, matched = pick.tags, against = title_of(by_path[anchor], anchor) })
+        end
     end
     offer("different", "something_different", different)
 
@@ -184,16 +243,10 @@ function Suggest.groups(ctx)
     for _i, r in ipairs(candidates) do take(recent, r.path) end
     offer("recent", "recently_added", recent)
 
-    -- 7. Pick up where you left off: books you started, most recently opened first.
-    local started = {}
-    for _i, path in ipairs(ctx.history or {}) do
-        if status_of(path) == "reading" then
-            local percent = math.floor((ctx.percent_of and tonumber(ctx.percent_of(path)) or 0) * 100 + 0.5)
-            take(started, path, percent > 0 and string.format("%d%%", percent) or nil, true) -- nothing for a sliver that rounds to 0%
-        end
-    end
-    offer("started", "started", started)
 
+    -- Shown in this order, which is not the order they claim books in: the single picks first, then what you were reading, then lists.
+    local rank = { next_in_series = 1, picked_for_you = 2, something_different = 3, started = 4, more_by_author = 5, collection = 6, recently_added = 7 }
+    table.sort(out, function(a, b) return (rank[a.name] or 99) < (rank[b.name] or 99) end)
     return out
 end
 

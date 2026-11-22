@@ -67,6 +67,15 @@ T.test("the current book and finished books are never offered", function()
         end
     end
 end)
+T.test("started: a book you started that is not in the history still shows here, once", function()
+    local groups = Suggest.groups(ctx { history = { "/done" } })
+    T.eq(paths(find(groups, "started")), "/mid")
+    for _i, g in ipairs(groups) do
+        if g.name ~= "started" then
+            for _j, b in ipairs(g.books) do T.eq(b.path == "/mid", false) end
+        end
+    end
+end)
 T.test("recently added: the newest books you have not started", function()
     T.eq(paths(find(Suggest.groups(ctx()), "recent")), "/new2 /new3 /new1")
 end)
@@ -75,13 +84,13 @@ T.test("started: books you opened and not finished, most recent first", function
 end)
 T.test("a chosen collection comes in its own order, without finished books", function()
     local g = find(Suggest.groups(ctx({ collection = { name = "To read", paths = { "/done", "/new1", "/mid", "/new3" } } })), "collection")
-    T.eq(paths(g), "/new1 /mid /new3")
+    T.eq(paths(g), "/new1 /new3") -- /mid is half read: it is shown under started instead
     T.eq(g.collection_name, "To read")
 end)
-T.test("groups come in order: series, author, collection, recent, started", function()
+T.test("groups are shown in order: the series, what you were reading, the author, your collection, then recent", function()
     local order = {}
     for _, g in ipairs(Suggest.groups(ctx({ collection = { name = "C", paths = { "/new1" } }, per_group = 1 }))) do order[#order + 1] = g.id end
-    T.eq(table.concat(order, ","), "series,author,collection,recent,started")
+    T.eq(table.concat(order, ","), "series,started,author,collection,recent")
 end)
 T.test("a group with nothing to offer is left out", function()
     local c = ctx({ library = { bk("/only", "Only", "Nobody") }, current = "/only", history = {} })
@@ -219,7 +228,7 @@ T.test("a book half read blocks the later ones, but is itself offered under star
             for _, b in ipairs(g.books) do T.eq(b.path ~= "/s6", true) end
         end
     end
-    T.eq(paths(find(groups, "started")), "/s5")
+    T.eq(paths(find(groups, "started")), "/s5 /s3 /mid") -- the history first, then the other half-read books
 end)
 
 T.test("a series book with no number is never offered as something new", function()
@@ -234,6 +243,75 @@ T.test("the line under a title says the author and which book of the series, whi
     T.eq(Suggest.byline({ series = "Strike", series_index = 5 }), "Book 5 of Strike")
     T.eq(Suggest.byline({ title = "Nothing known" }), nil)
     T.eq(Suggest.byline({ authors = "  " }), nil)
+end)
+
+T.test("a group holds four books by default, a shelf of covers", function()
+    local many = {}
+    for i = 1, 8 do many[#many + 1] = { path = "/n" .. i, title = "N" .. i, authors = "Someone" .. i } end
+    local groups = Suggest.groups({ current = "/x", library = many, status_of = function() return "new" end, modified_of = function(p) return tonumber(p:match("%d+")) end })
+    T.eq(#find(groups, "recent").books, 4)
+end)
+
+T.test("a book carries its tags, language and description for the detail sheet", function()
+    local lib2 = { { path = "/a", title = "A", authors = "X", keywords = "Fantasy\n Romance \n", language = "en", description = "About A." } }
+    local g = find(Suggest.groups({ current = "/x", library = lib2, status_of = function() return "new" end, modified_of = function() return 0 end }), "recent")
+    T.eq(table.concat(g.books[1].tags, "|"), "Fantasy|Romance")
+    T.eq(g.books[1].language, "en")
+    T.eq(g.books[1].description, "About A.")
+end)
+
+T.test("the picks say why: the liked books behind them, and what they are different from", function()
+    local lib3 = {
+        { path = "/f1", title = "Lightlark", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/f2", title = "Crowntide", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/s1", title = "Dune", keywords = "Science Fiction", language = "en" },
+        { path = "/cur", title = "Now", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/f3", title = "F3", keywords = "Fantasy\nRomantasy", language = "en" },
+        { path = "/sf", title = "SF", keywords = "Science Fiction", language = "en" },
+    }
+    local st = { ["/f1"] = "complete", ["/f2"] = "complete", ["/s1"] = "complete", ["/cur"] = "reading" }
+    local groups = Suggest.groups({ current = "/cur", library = lib3, status_of = function(p) return st[p] or "new" end,
+        rating_of = function(p) return st[p] and 5 or 0 end, modified_of = function() return 0 end, without = { next_in_series = true, more_by_author = true } })
+    local pick, other = find(groups, "for_you").books[1], find(groups, "different").books[1]
+    T.eq(pick.path, "/f3")
+    T.eq(table.concat(pick.because, "|"), "Crowntide|Lightlark") -- the two that share most with it (equal, so by title)
+    T.eq(other.path, "/sf")
+    T.eq(other.against, "Now")
+    T.eq(table.concat(other.because, "|"), "Dune")
+end)
+
+T.test("books you started carry how far through them you are as a number", function()
+    local g = find(Suggest.groups(ctx({ percent_of = function(p) return p == "/mid" and 0.376 or 0 end })), "started")
+    for _, b in ipairs(g.books) do
+        if b.path == "/mid" then T.eq(b.percent, 38) end
+    end
+end)
+
+T.test("a pick says why: the books you liked and what they share, in a short line and a long one", function()
+    local short, long = Suggest.explain("picked_for_you", { because = { "Lightlark", "Crowntide" }, matched = { "Fantasy", "Romance" } }, {})
+    T.eq(short, "Because you liked Lightlark and Crowntide")
+    T.eq(long, "You liked Lightlark and Crowntide. They share Fantasy and Romance with this book.")
+    short, long = Suggest.explain("picked_for_you", { because = { "Lightlark" } }, {})
+    T.eq(short, "Because you liked Lightlark")
+    T.eq(long, "Because you liked Lightlark.")
+end)
+
+T.test("something different says what it is different from, and what you like in it", function()
+    local short, long = Suggest.explain("something_different", { against = "Now", matched = { "Romance" }, tags = { "Romance" } }, {})
+    T.eq(short, "Nothing in common with Now, but you like Romance")
+    T.eq(long, "Nothing in common with Now, but you like Romance.")
+end)
+
+T.test("the other groups explain themselves in the detail sheet only", function()
+    local short, long = Suggest.explain("next_in_series", { series = "Strike" }, {})
+    T.eq(short, nil)
+    T.eq(long, "The next book in Strike.")
+    short, long = Suggest.explain("started", { percent = 38 }, {})
+    T.eq(long, "You are 38% through it.")
+    short, long = Suggest.explain("collection", {}, { collection_name = "To Be Read" })
+    T.eq(long, "From your collection To Be Read.")
+    T.eq(select(2, Suggest.explain("started", { percent = 0 }, {})), nil)
+    T.eq(select(2, Suggest.explain("more_by_author", {}, {})), nil)
 end)
 
 T.done()

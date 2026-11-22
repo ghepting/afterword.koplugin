@@ -8,7 +8,8 @@
 --
 --   ctx.current    contrast only: path of the book just read or open now
 --
--- pick(ctx) -> { path, tags } where tags are the two that matched best, or nil when there is too little to go on.
+-- pick(ctx) -> { path, tags, because } where tags are the two that matched best and because is up to two titles of books you liked
+-- that explain it, or nil when there is too little to go on.
 -- contrast(ctx) -> the same shape: an unread book that shares no tag with ctx.current and none you have rated down, and fits
 -- the tags you do like, for when you want something different from the book you are on.
 --
@@ -61,13 +62,16 @@ local function build(ctx)
         end
     end
 
-    local profile, liked, languages = {}, 0, {}
+    local profile, liked, languages, likes = {}, 0, {}, {}
     for _i, r in ipairs(library) do
         local w = weight(ctx.status_of(r.path), ctx.rating_of and ctx.rating_of(r.path) or 0)
         if w ~= 0 and #tags[r.path] > 0 then
             for _j, t in ipairs(tags[r.path]) do profile[t.key] = (profile[t.key] or 0) + w end
             if w > 0 then
                 liked = liked + 1
+                local keys = {}
+                for _k, t in ipairs(tags[r.path]) do keys[t.key] = true end
+                likes[#likes + 1] = { title = r.title or tostring(r.path):match("([^/]+)%.%w+$") or r.path, weight = w, keys = keys }
                 local lang = tostring(r.language or ""):lower()
                 if lang ~= "" then languages[lang] = (languages[lang] or 0) + 1 end
             end
@@ -78,7 +82,7 @@ local function build(ctx)
     for lang, n in pairs(languages) do
         if n > best then mine, best = lang, n end
     end
-    return { tags = tags, label = label, df = df, tagged = tagged, profile = profile, liked = liked, language = mine }
+    return { tags = tags, label = label, df = df, tagged = tagged, profile = profile, liked = liked, language = mine, likes = likes }
 end
 
 -- How well an unread book fits the tags you like (0 when none of its tags qualify), and the two that matter most.
@@ -99,9 +103,29 @@ local function fit(model, record, except)
         if a.value ~= b.value then return a.value > b.value end
         return a.key < b.key
     end)
-    local top = {}
+    local top, keys = {}, {}
     for i = 1, math.min(2, #matched) do top[i] = model.label[matched[i].key] end
-    return score, top
+    for _i, m in ipairs(matched) do keys[m.key] = true end
+    return score, top, keys
+end
+
+-- The books you liked that explain a pick: the ones sharing most with it, weighted by how much you liked them. Up to two titles.
+local function because(model, keys)
+    local ranked = {}
+    for _i, like in ipairs(model.likes) do
+        local shared = 0
+        for key in pairs(keys) do
+            if like.keys[key] then shared = shared + 1 end
+        end
+        if shared > 0 then ranked[#ranked + 1] = { title = like.title, score = like.weight * shared } end
+    end
+    table.sort(ranked, function(a, b)
+        if a.score ~= b.score then return a.score > b.score end
+        return a.title < b.title
+    end)
+    local titles = {}
+    for i = 1, math.min(2, #ranked) do titles[i] = ranked[i].title end
+    return titles
 end
 
 -- Whether a book may be offered: unread, not skipped, and in a language you read.
@@ -121,8 +145,10 @@ function Taste.pick(ctx)
     local pick, pick_score
     for _i, r in ipairs(ctx.library or {}) do
         if offerable(ctx, model, r) then
-            local score, top = fit(model, r)
-            if score > 0 and better(score, r, pick_score, pick) then pick, pick_score = { path = r.path, tags = top }, score end
+            local score, top, keys = fit(model, r)
+            if score > 0 and better(score, r, pick_score, pick) then
+                pick, pick_score = { path = r.path, tags = top, because = because(model, keys) }, score
+            end
         end
     end
     return pick
@@ -143,8 +169,10 @@ function Taste.contrast(ctx)
                 if mine[t.key] or (model.profile[t.key] or 0) < 0 then clear = false; break end
             end
             if clear then
-                local score, top = fit(model, r)
-                if score > 0 and better(score, r, pick_score, pick) then pick, pick_score = { path = r.path, tags = top }, score end
+                local score, top, keys = fit(model, r)
+                if score > 0 and better(score, r, pick_score, pick) then
+                    pick, pick_score = { path = r.path, tags = top, because = because(model, keys) }, score
+                end
             end
         end
     end

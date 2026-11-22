@@ -236,20 +236,29 @@ function Afterword:showPicker(info, on_open, opts)
         picked_for_you = function() return _("Picked for you") end,
         something_different = function() return _("Something different") end,
         recently_added = function() return _("Recently added") end,
-        started = function() return _("Pick up where you left off") end,
+        started = function() return _("Keep reading") end,
     }
-    local items = {}
+    -- The first two single picks sit side by side at the top; every other group (and any further single pick) is a column of books
+    -- below them, three columns to a row.
+    local single = { next_in_series = true, picked_for_you = true, something_different = true }
+    local items, cards, columns = {}, {}, {}
     for _i, g in ipairs(groups) do
-        items[#items + 1] = {
-            text = (heading[g.name] or function() return g.name end)(g), heading = true, callback = function() end,
-        }
-        for _j, book in ipairs(g.books) do
-            items[#items + 1] = {
-                text = book.title, subtitle = Suggest.byline(book), mandatory = book.note,
-                callback = function() on_open(book.path) end,
+        local name = (heading[g.name] or function() return g.name end)(g)
+        if single[g.name] and #cards < 2 then
+            local book = g.books[1]
+            cards[#cards + 1] = {
+                heading = name, book = book, why = (Suggest.explain(g.name, book, g)),
+                solid = #cards == 0, button = _("Start reading"),
             }
+        else
+            columns[#columns + 1] = { heading = name, books = g.books, progress = g.name == "started" }
         end
-        items[#items].last = true -- the row after it is the next group, so it takes no rule
+    end
+    if #cards > 0 then items[#items + 1] = { kind = "picks", cards = cards } end
+    for first = 1, #columns, 3 do
+        local row = {}
+        for i = first, math.min(first + 2, #columns) do row[#row + 1] = columns[i] end
+        items[#items + 1] = { kind = "lists", columns = row }
     end
     if #items == 0 then
         UIManager:show(require("ui/widget/infomessage"):new { text = _("Nothing to suggest yet.") })
@@ -260,6 +269,7 @@ function Afterword:showPicker(info, on_open, opts)
         title = opts.title or _("Pick next"), item_table = items, items_max_lines = 2, -- rows of different heights: PickMenu measures and draws them
         is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
         close_callback = function() UIManager:close(menu) end,
+        on_open = function(book) on_open(book.path) end,
     }
     self.picker = menu
     UIManager:show(menu)
