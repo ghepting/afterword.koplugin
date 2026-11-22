@@ -1,4 +1,4 @@
--- The list on the What to read next / Pick next screen: KOReader's own Menu (title bar, page arrows, paging) with its rows drawn
+-- The list on the What to read next / Pick next screen: KOReader's own Menu (paging, with its page arrows only when a second page is needed) with its rows drawn
 -- here. A row is one of:
 --
 --   { kind = "picks", cards = { { heading, book, why, button, solid }, ... } }
@@ -17,6 +17,7 @@ local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
+local Header = require("afterword/header")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local ImageWidget = require("ui/widget/imagewidget")
@@ -59,6 +60,8 @@ local function dims(width)
     d.lh_heading = line_height(d.f_heading, true)
     d.head_h = d.lh_heading + s(8) -- a heading and the space under it
     d.bar_h = s(3)
+    d.f_lead = face(18)
+    d.lead_h = s(12) + line_height(d.f_lead, true) + s(10) -- the screen's own heading, over the first row, with the space around it
     return d
 end
 
@@ -130,7 +133,12 @@ function PickRow:init()
     local entry = self.entry
     self.ges_events = { TapSelect = { GestureRange:new { ges = "tap", range = self.dimen } } }
     local group = VerticalGroup:new { align = "left" }
-    if not entry.at_top then group[#group + 1] = VerticalSpan:new { width = self.d.section_gap } end
+    if entry.lead then
+        group[#group + 1] = VerticalSpan:new { width = s(12) }
+        group[#group + 1] = HorizontalGroup:new { HorizontalSpan:new { width = self.d.pad },
+            TextWidget:new { text = entry.lead, face = self.d.f_lead, bold = true, max_width = self.d.inner, truncate_with_ellipsis = true } }
+        group[#group + 1] = VerticalSpan:new { width = s(10) }
+    elseif not entry.at_top then group[#group + 1] = VerticalSpan:new { width = self.d.section_gap } end
     group[#group + 1] = entry.kind == "picks" and self:buildPicks() or self:buildLists()
     self[1] = LeftContainer:new { dimen = Geom:new { w = self.d.width, h = self.dimen.h }, group }
 end
@@ -245,7 +253,7 @@ function PickRow:onTapSelect(arg, ges)
         return true
     end
     local column = entry.columns[math.floor(x / (d.col_w + d.col_gap)) + 1]
-    local y = ges.pos.y - self.dimen.y - (entry.at_top and 0 or d.section_gap) - d.head_h
+    local y = ges.pos.y - self.dimen.y - (entry.lead and d.lead_h or entry.at_top and 0 or d.section_gap) - d.head_h
     local book = column and y >= 0 and column.books[math.floor(y / (entry.row_h + d.row_gap)) + 1]
     if book then menu.on_open(book) end
     return true
@@ -258,11 +266,29 @@ function PickRow:getFocusIndicatorRegion() return self.dimen end
 
 local PickMenu = Menu:extend {}
 
--- How tall each row is, and which rows fit on which page: Menu's own rule, with this module's row heights. The picks take whatever
--- height the lists leave, so on one screen there is a big spotlight, and in landscape the same layout simply has a wider, shorter one.
-function PickMenu:setupItemHeights()
+-- The title bar is Afterword's own header (mark, title, close), made at the screen's width each time Menu lays itself out.
+function PickMenu:init()
+    self.custom_title_bar = Header:new { title = _("Afterword"), width = Screen:getWidth(), on_close = function() self:onClose() end }
+    Menu.init(self)
+    self.footer_box = self[1][1][3] -- the page arrows' container, in Menu's layout: content_group, page_return, footer
+    self.page_arrows = self.footer_box and self.footer_box[1]
+    self:syncFooter() -- Menu has drawn the first page already, before the container was known
+end
+
+-- On one page the arrows say nothing: leave them out (their room went to the picks in setupItemHeights).
+function PickMenu:syncFooter()
+    if self.footer_box and self.page_arrows then
+        self.footer_box[1] = self.one_page and VerticalSpan:new { width = 0 } or self.page_arrows
+    end
+end
+
+-- The picks take whatever height the lists leave, so on one screen there is a big spotlight, and in landscape the same layout simply
+-- has a wider, shorter one. Works out the rows for a screen `avail` tall (see setupItemHeights).
+function PickMenu:layout(avail)
     local d = dims(self.inner_dimen.w)
     self.dims = d
+    local lead = (self.title and self.item_table[1]) and d.lead_h or 0 -- the heading's height, over the first row
+    if self.item_table[1] then self.item_table[1].lead = self.title end
     -- how tall a book's row in a list needs to be: the tallest of any list's (every row in the screen shares it, so the columns line up)
     local row_h = d.thumb_h
     for _i, item in ipairs(self.item_table) do
@@ -279,7 +305,7 @@ function PickMenu:setupItemHeights()
     end
     -- how many rows a list may have: the picks above need a cover worth looking at, so on a short (landscape) screen the lists are shorter
     local pick_min = s(140)
-    local fit = math.floor((self.available_height - 2 * d.section_gap - 2 * d.head_h - pick_min - s(6) + d.row_gap) / (row_h + d.row_gap))
+    local fit = math.floor((avail - lead - 2 * d.section_gap - 2 * d.head_h - pick_min - s(6) + d.row_gap) / (row_h + d.row_gap))
     local rows = math.max(2, fit)
     local first_lists
     for i, item in ipairs(self.item_table) do
@@ -298,16 +324,16 @@ function PickMenu:setupItemHeights()
     end
     -- the picks: as tall as is left after one row of lists on the same screen, and no wider than a pick's card has room for
     local fixed = first_lists and (d.section_gap + first_lists.body_h) or 0
-    local want = self.available_height - fixed - d.section_gap - d.head_h - s(6)
+    local want = avail - lead - fixed - d.section_gap - d.head_h - s(6)
     d.pick_h = math.floor(math.max(s(96), math.min(want, math.floor(d.card_w * 0.5 * 1.5)) - s(12)) * 0.87)
     d.pick_w = math.floor(d.pick_h / 1.5)
     -- when the whole list fits with room to spare, the space goes between the picks and the lists, not as a hole at the bottom
     if #self.item_table <= 2 and first_lists then
-        local spare = self.available_height - (d.head_h + d.pick_h) - (d.section_gap + first_lists.body_h)
+        local spare = avail - lead - (d.head_h + d.pick_h) - (d.section_gap + first_lists.body_h)
         if spare > 0 then d.section_gap = d.section_gap + math.min(spare, s(36)) end
     end
     local function height(item)
-        local top = item.at_top and 0 or d.section_gap
+        local top = item.lead and d.lead_h or item.at_top and 0 or d.section_gap
         if item.kind == "picks" then return top + d.head_h + d.pick_h end
         return top + item.body_h
     end
@@ -316,7 +342,7 @@ function PickMenu:setupItemHeights()
     for i, item in ipairs(self.item_table) do
         item.at_top = #items == 0
         item.height = height(item)
-        if used + item.height > self.available_height and #items > 0 then
+        if used + item.height > avail and #items > 0 then
             table.insert(self.page_items, items)
             items, used = {}, 0
             item.at_top = true
@@ -326,6 +352,21 @@ function PickMenu:setupItemHeights()
         used = used + item.height
     end
     table.insert(self.page_items, items)
+end
+
+-- How tall each row is, and which rows fit on which page: Menu's own rule, with this module's row heights. The page arrows take room at
+-- the bottom, so the layout is tried without them first: when everything fits on one page they are not shown, and their room goes to the
+-- picks. Only a screen too small for that gets the arrows and a second page.
+function PickMenu:setupItemHeights()
+    local top = self.title_bar and self.title_bar:getHeight() or 0
+    local footer = self.inner_dimen.h - top - self.available_height
+    self:layout(self.available_height + footer)
+    self.one_page = #self.page_items == 1
+    if self.one_page then
+        self.available_height = self.available_height + footer
+    else
+        self:layout(self.available_height)
+    end
 end
 
 -- Menu:updateItems with this module's rows in place of MenuItem.
@@ -350,6 +391,7 @@ function PickMenu:updateItems(select_number, no_recalculate_dimen)
     end
 
     self:updatePageInfo(select_number)
+    self:syncFooter()
     self:mergeTitleBarIntoLayout()
     UIManager:setDirty(self.show_parent, function()
         return "ui", old_dimen and old_dimen:combine(self.dimen) or self.dimen
