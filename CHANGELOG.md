@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/ghepting/afterword.koplugin/compare/v0.6.0...v0.6.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* leave room for every row of lists on one screen, so four list groups no longer force a second page ([#15](https://github.com/ghepting/afterword.koplugin/issues/15)) ([b9e4bef](https://github.com/ghepting/afterword.koplugin/commit/b9e4befb77f5c1bf7b2b7cf2015ad6d20777eecc))
+
 ## [0.6.0](https://github.com/ghepting/afterword.koplugin/compare/v0.5.0...v0.6.0) (2026-11-22)
 
 
