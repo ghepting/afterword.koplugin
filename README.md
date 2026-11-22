@@ -21,8 +21,13 @@ When you reach the end of a book, Afterword shows one screen: how the book went,
 The list of what to read next opens from that screen, or any time from **Tools › Afterword › What to read next**:
 
 <p align="center">
-  <img src="assets/pick-next.png" width="260" alt="The list, page 1: a spotlight pick with its reasons, and something different">
-  <img src="assets/pick-next-2.png" width="260" alt="The list, page 2: books you are part-way through, and your collection, as shelves of covers">
+  <img src="assets/pick-next.png" width="260" alt="The list in portrait: two picks side by side with a cover each and a line on why, then Keep reading, your collection and Recently added as columns of small-cover rows">
+</p>
+
+It is one screen, in portrait or landscape; the picks' covers take whatever height the lists leave:
+
+<p align="center">
+  <img src="assets/pick-next-landscape.png" width="420" alt="The same list in landscape">
 </p>
 
 ## What it shows
@@ -33,15 +38,15 @@ The list of what to read next opens from that screen, or any time from **Tools �
 - **Mark as finished:** a box that starts the way you already set up KOReader. It is selected when KOReader's "mark a book finished at its end" setting is on, or when the book is already finished. Leaving the screen marks the book finished if it is selected, and puts a finished book back to reading if you clear it.
 - **Next:** the first book after this one in its series that you own and have not finished. Hidden when there is none.
 - **Pick next…:** a list of what to read, in groups, never a book you have finished, and each book only once. The groups, in the order shown:
-  1. **Next in the series** and **Picked for you** and **Something different** are single picks. The first is a spotlight card with a large cover, the genre tags, a line saying why it was picked, and a **Start reading** button; the others are smaller cards.
-  2. **Pick up where you left off:** books you started and did not finish, as a shelf of covers with how far through each you are.
-  3. **More by** the author, **From** a collection you choose (see below), and **Recently added** are shelves too.
+  1. **Next in the series**, **Picked for you** and **Something different** are single picks. The first two that apply sit side by side at the top, each with a cover, its title, author and series, a line saying why it was picked, and a **Start reading** button.
+  2. **Keep reading:** books you started and did not finish, with how far through each you are. It includes any half-read book in your library, not only recent ones.
+  3. **More by** the author, **From** a collection you choose (see below), and **Recently added** are lists too.
 
-  A shelf is up to four covers across, each with its title and author and a quiet grey line under them: which book of its series it is ("Book 3"), and how far through it you are. A book with no cover in KOReader's cache gets a plain grey card with its title. Page arrows are KOReader's own. **Tap a book for its sheet:** cover, author, series, language, genre tags, why it was picked, and its description when the book has one, with **Start reading** and **Not now**. The **Start** buttons on the cards skip the sheet.
+  The lists are columns of small-cover rows, three across, each with its title, author and a quiet grey line: which book of its series it is ("Book 3"), and how far through it you are. A book with no cover in KOReader's cache gets a plain grey card with its title. **Tap a cover or a Start reading button to open the book.**
 
   Picked for you is one unread book that fits your taste, with the books you liked behind it; Something different is for when you want the opposite of the book you are on (or, from the file browser, the one you read last): one unread book that shares none of its tags and none you have rated down, and fits the tags you do like.
 
-**Nothing is suggested out of order in a series.** A book in a series is only offered as something new when every lower-numbered book of that series you own is finished, so book 3 never appears while book 2 is unread, half read or on hold (a gap in what you own is skipped). It applies to every group, your collection included, except "Pick up where you left off", which is about books you already started. A series book with no number cannot be placed, so it is not offered.
+**Nothing is suggested out of order in a series.** A book in a series is only offered as something new when every lower-numbered book of that series you own is finished, so book 3 never appears while book 2 is unread, half read or on hold (a gap in what you own is skipped). It applies to every group, your collection included, except "Keep reading", which is about books you already started. A series book with no number cannot be placed, so it is not offered.
 
 **Picked for you** is worked out on the device from what KOReader already knows. A book you rated 4 or 5 counts for its genre tags, a 3 a little, a 1 or 2 against them; a book you finished without rating counts a little for them, and one you put on hold a little against. An unread book is scored by how many of its tags you have liked, with rare tags counting for more than ones nearly everything has, and books in a language you do not read are left out. It needs at least two books you liked before it will guess, and books with no tags are never offered. Nothing is sent anywhere.
 
@@ -52,7 +57,7 @@ The screenshots are from the KOReader desktop emulator, with reading numbers mad
 **Tools › Afterword**, in a book or in the file browser:
 
 - **Show at the end of a book.** On by default. Off, KOReader's own end-of-book popup is used as before.
-- **What to read next.** The same list, whenever you want it, from a book you have open or from the file browser: for when you started a book and are not into it. It leaves out the next-in-series and more-by groups, which are about the book you are leaving, and it does not touch that book: it stays "reading" and turns up under "Pick up where you left off". It is also in KOReader's action list (**Afterword: what to read next**), so a gesture, profile or hotkey can start it.
+- **What to read next.** The same list, whenever you want it, from a book you have open or from the file browser: for when you started a book and are not into it. It leaves out the next-in-series and more-by groups, which are about the book you are leaving, and it does not touch that book: it stays "reading" and turns up under "Keep reading". It is also in KOReader's action list (**Afterword: what to read next**), so a gesture, profile or hotkey can start it.
 - **Suggest from a collection….** Pick any KOReader collection, and Pick next also offers its first books, in its own order. A Bookshelf shelf is a collection, so it works with one. Choose **None** to turn it off.
 - **Check for updates.** Asks GitHub whether a newer Afterword has been released, only when you tap it. If there is one it shows the release notes and offers to download it, check it against GitHub's checksum, install it and restart KOReader. If anything goes wrong nothing is changed, and the old version is kept as `afterword.koplugin.old`. A copy that is a link to a source checkout is not updated from here.
 
