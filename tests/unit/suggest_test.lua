@@ -377,3 +377,30 @@ T.test("books you put on hold are offered when nothing is new", function()
     T.eq(paths(find(groups, "on_hold")), "/h2 /h1") -- the one that has waited longest first
     T.eq(find(groups, "recent"), nil)
 end)
+
+T.test("a book you said not interested in is offered by no group, picks included", function()
+    local base = Suggest.groups(ctx { current = "/new1", finished = "/new1", rating_of = function() return 0 end })
+    local seen = {}
+    for _, g in ipairs(base) do for _, b in ipairs(g.books) do seen[b.path] = true end end
+    local hide = {}
+    for path in pairs(seen) do hide[path] = true end
+    local groups = Suggest.groups(ctx { current = "/new1", finished = "/new1", rating_of = function() return 0 end, hidden = hide })
+    for _, g in ipairs(groups) do
+        for _, b in ipairs(g.books) do T.eq(hide[b.path], nil) end
+    end
+end)
+
+T.test("hiding the pick for you makes room for the next best, not nothing", function()
+    local lib = {
+        { path = "/a", title = "A", authors = "X", keywords = "Fantasy" },
+        { path = "/b", title = "B", authors = "Y", keywords = "Fantasy" },
+        { path = "/c", title = "C", authors = "Z", keywords = "Fantasy" },
+    }
+    local function groups(hidden)
+        return Suggest.groups { library = lib, status_of = function() return "new" end, rating_of = function() return 0 end, history = {}, hidden = hidden }
+    end
+    local first = groups(nil)
+    local pick = find(first, "for_you").books[1].path
+    local second = find(groups({ [pick] = true }), "for_you")
+    T.eq(second ~= nil and second.books[1].path ~= pick, true)
+end)
