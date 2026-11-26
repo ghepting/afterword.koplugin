@@ -418,5 +418,7 @@ function PickMenu:updateItems(select_number, no_recalculate_dimen)
     end)
 end
 
+-- What other screens of the plugin (prefs.lua) share with this one: its covers, its fonts and its scale.
+PickMenu.helpers = { cover = cover, face = face, s = s, GREY = GREY, line_height = line_height }
 
 return PickMenu

@@ -29,19 +29,10 @@ local Afterword = WidgetContainer:extend {
 local SETTING = "afterword_enabled"
 local COLLECTION = "afterword_collection" -- the name of a collection to suggest from, or unset
 local Exclusions = require("afterword/exclusions")
-local Header = require("afterword/header")
-local Screen = Device.screen
 
 -- What the person told Afterword not to suggest (books, authors, series, whole rows, collections, snoozes), in KOReader's settings.
 local function exclusions() return Exclusions.new(G_reader_settings) end
 
--- The rows of the list a person can hide, in the order they are shown, with the name each is known by.
-local ROWS = {
-    { "next_in_series", _("Next in the series") }, { "picked_for_you", _("Picked for you") },
-    { "something_different", _("Something different") }, { "started", _("Keep reading") },
-    { "more_by_author", _("More by this author") }, { "collection", _("From your collection") },
-    { "recently_added", _("Recently added") }, { "on_hold", _("On hold") },
-}
 local SNOOZE_DAYS = 30
 
 local function enabled()
@@ -259,204 +250,65 @@ local function first_author(book)
     return tostring(book.authors or ""):match("[^\n]+")
 end
 
--- Press and hold on a book in the list: what to stop suggesting. `where` is the card or column it sits in (its heading and row).
--- `again` rebuilds the list without what was hidden.
+-- Press and hold on a book in the list: a sheet of what to stop suggesting. `where` is the card or column it sits in (its heading and row).
+-- `again` rebuilds the list once something is hidden; an Undo bar then offers to put it back.
 function Afterword:askToHide(book, where, again)
+    local Sheet = require("afterword/sheet")
     local ex = exclusions()
-    local dialog
-    local function hide(kind, key, value)
-        return function()
-            UIManager:close(dialog)
-            ex:add(kind, key, value)
-            again()
+    local function hide(kind, key, value, said)
+        ex:add(kind, key, value)
+        again()
+        Sheet.Toast.show { text = said, undo_text = _("Undo"), on_undo = function() ex:remove(kind, key); again() end }
+    end
+    local function fewer()
+        local options = {}
+        local author = first_author(book)
+        if author and author ~= "" then
+            options[#options + 1] = { title = T(_("Books by %1"), author), subtitle = _("Never suggest this author"),
+                callback = function() hide("author", author, nil, T(_("Hidden: books by %1"), author)) end }
         end
+        if book.series and book.series ~= "" then
+            options[#options + 1] = { title = T(_("The series %1"), book.series), subtitle = _("Never suggest this series"),
+                callback = function() hide("series", book.series, nil, T(_("Hidden: the series %1"), book.series)) end }
+        end
+        if where and where.group then
+            options[#options + 1] = { title = T(_("The row \"%1\""), where.heading or where.group), subtitle = _("Hide the whole row"),
+                callback = function() hide("group", where.group, nil, T(_("Hidden: the row \"%1\""), where.heading or where.group)) end }
+        end
+        UIManager:show(Sheet.Sheet:new { title = book.title or "?", subtitle = _("Fewer like this"), cover_path = book.path, options = options, cancel_text = _("Cancel") })
     end
-    local buttons = {
-        { { text = _("Don't suggest this book"), callback = hide("book", book.path) } },
-        { { text = T(_("Not now: ask again in %1 days"), SNOOZE_DAYS), callback = hide("snooze", book.path, os.time() + SNOOZE_DAYS * Exclusions.DAY) } },
+    local by = first_author(book)
+    local about = by or ""
+    local series = require("afterword/suggest").series_text(book)
+    if series then about = (about ~= "" and about .. " \u{00B7} " or "") .. series end
+    local options = {
+        { title = _("Don't suggest this book"), subtitle = _("It stays in your library"),
+          callback = function() hide("book", book.path, nil, T(_("Hidden: %1"), book.title or "?")) end },
+        { title = _("Not now"), subtitle = T(_("Ask again in %1 days"), SNOOZE_DAYS),
+          callback = function() hide("snooze", book.path, os.time() + SNOOZE_DAYS * Exclusions.DAY, T(_("Snoozed for %1 days: %2"), SNOOZE_DAYS, book.title or "?")) end },
+        { title = _("Fewer like this"), subtitle = _("Hide its author, its series, or this row"), callback = fewer },
     }
-    local author = first_author(book)
-    if author and author ~= "" then
-        buttons[#buttons + 1] = { { text = T(_("Never suggest books by %1"), author), callback = hide("author", author) } }
-    end
-    if book.series and book.series ~= "" then
-        buttons[#buttons + 1] = { { text = T(_("Never suggest the series %1"), book.series), callback = hide("series", book.series) } }
-    end
-    if where and where.group then
-        buttons[#buttons + 1] = { { text = T(_("Hide the row \"%1\""), where.heading or where.group), callback = hide("group", where.group) } }
-    end
-    buttons[#buttons + 1] = { { text = _("Cancel"), callback = function() UIManager:close(dialog) end } }
+    UIManager:show(Sheet.Sheet:new { title = book.title or "?", subtitle = about, cover_path = book.path, options = options, cancel_text = _("Cancel") })
+end
+
+-- The mark in the list's header opens this, as ShelfSpace's logo does: the plugin's own few actions.
+function Afterword:showMarkMenu(after_preferences)
+    local dialog
+    local function act(fn) return function() UIManager:close(dialog); fn() end end
     dialog = ButtonDialog:new {
-        title = T(_("%1\n\nStays in your library. Undo any of this under Tools \u{203A} Afterword \u{203A} Preferences."), book.title or "?"),
-        buttons = buttons,
+        title = _("Afterword"), title_align = "center",
+        buttons = {
+            { { text = _("Preferences"), callback = act(function() self:showPreferences(after_preferences) end) },
+              { text = _("Check for updates"), callback = act(function() self:checkForUpdates() end) } },
+            { { text = _("Close Afterword"), callback = act(function() if self.picker then UIManager:close(self.picker); self.picker = nil end end) } },
+        },
     }
     UIManager:show(dialog)
 end
 
--- One kind of exclusion as a checklist: a check means it stays out; unchecking brings it back, at once. `entries` is a list of
--- { key, label, note }; `restore_all` adds a first row that unchecks everything. `value_of(key)` is what is stored when it is checked again.
-function Afterword:showChecklist(opts)
-    local Menu = require("ui/widget/menu")
-    local ex = exclusions()
-    local checked, saved = {}, {}
-    for _i, e in ipairs(opts.entries) do
-        saved[e[1]] = ex:get(opts.kind)[e[1]]
-        checked[e[1]] = ex:has(opts.kind, e[1])
-    end
-    local menu
-    local function set(key, on)
-        checked[key] = on
-        if on then ex:add(opts.kind, key, saved[key]) else ex:remove(opts.kind, key) end
-    end
-    local function items()
-        local list = {}
-        if opts.restore_all then
-            list[#list + 1] = {
-                text = _("Bring them all back"),
-                callback = function()
-                    for _i, e in ipairs(opts.entries) do set(e[1], false) end
-                    menu:switchItemTable(nil, items(), 1)
-                end,
-            }
-        end
-        for _i, e in ipairs(opts.entries) do
-            local index = #list + 1
-            list[#list + 1] = {
-                text = (checked[e[1]] and "\u{2611}  " or "\u{2610}  ") .. e[2],
-                mandatory = e[3],
-                callback = function()
-                    set(e[1], not checked[e[1]])
-                    menu:switchItemTable(nil, items(), index)
-                end,
-            }
-        end
-        return list
-    end
-    menu = Menu:new {
-        title = opts.title, item_table = items(), is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
-        custom_title_bar = Header:new { title = opts.title, width = Screen:getWidth(), on_close = function() menu:onClose() end },
-        close_callback = function()
-            UIManager:close(menu)
-            if opts.on_close then opts.on_close() end
-        end,
-    }
-    UIManager:show(menu)
-end
-
--- A book's title by its path, for the lists of books.
-local function titles_by_path()
-    local titles = {}
-    pcall(function()
-        local BIM = require("bookinfomanager")
-        BIM:openDbConnection()
-        for _i, r in ipairs(Store.books(BIM.db_conn)) do titles[r.path] = r.title end
-    end)
-    return titles
-end
-
-local function days_until(time) return math.max(1, math.ceil((time - os.time()) / Exclusions.DAY)) end
-
--- Everything the person has told Afterword not to suggest, in one place: a row per kind with how many, each opening a checklist.
--- `on_close` runs when it is closed, for whatever was open behind it to refresh.
-function Afterword:showPreferences(on_close)
-    local Menu = require("ui/widget/menu")
-    local menu
-    local function refresh() if menu then menu:switchItemTable(nil, self:preferenceItems(refresh)) end end
-    menu = Menu:new {
-        title = _("Preferences"), item_table = self:preferenceItems(refresh), is_borderless = true, is_popout = false,
-        covers_fullscreen = true, is_enable_shortcut = false,
-        custom_title_bar = Header:new { title = _("Preferences"), width = Screen:getWidth(), on_close = function() menu:onClose() end },
-        close_callback = function()
-            UIManager:close(menu)
-            if on_close then on_close() end
-        end,
-    }
-    UIManager:show(menu)
-end
-
-function Afterword:preferenceItems(refresh)
-    local ex = exclusions()
-    local titles = titles_by_path()
-    local function open(kind, title, entries, restore_all)
-        if #entries == 0 then
-            UIManager:show(InfoMessage:new { text = _("Nothing here yet."), timeout = 2 })
-            return
-        end
-        self:showChecklist { kind = kind, title = title, entries = entries, restore_all = restore_all, on_close = refresh }
-    end
-    local function names(kind)
-        local entries = {}
-        for _i, key in ipairs(ex:keys(kind)) do entries[#entries + 1] = { key, key } end
-        return entries
-    end
-    local function count(kind) return ex:count(kind) > 0 and tostring(ex:count(kind)) or "" end
-    return {
-        {
-            text = _("Books"), mandatory = count("book"),
-            callback = function()
-                local entries = {}
-                for _i, path in ipairs(ex:keys("book")) do
-                    entries[#entries + 1] = { path, titles[path] or path:match("([^/]+)%.%w+$") or path }
-                end
-                table.sort(entries, function(a, b) return a[2]:lower() < b[2]:lower() end)
-                open("book", _("Hidden books"), entries, true)
-            end,
-        },
-        {
-            text = _("Snoozed books"), mandatory = count("snooze"),
-            callback = function()
-                local entries = {}
-                for path, back in pairs(ex:get("snooze")) do
-                    entries[#entries + 1] = { path, titles[path] or path:match("([^/]+)%.%w+$") or path, T(_("back in %1 days"), days_until(back)) }
-                end
-                table.sort(entries, function(a, b) return a[2]:lower() < b[2]:lower() end)
-                open("snooze", _("Snoozed books"), entries, true)
-            end,
-        },
-        { text = _("Authors"), mandatory = count("author"), callback = function() open("author", _("Hidden authors"), names("author"), true) end },
-        { text = _("Series"), mandatory = count("series"), callback = function() open("series", _("Hidden series"), names("series"), true) end },
-        {
-            text = _("Rows of the list"), mandatory = count("group"),
-            callback = function()
-                local entries = {}
-                for _i, row in ipairs(ROWS) do entries[#entries + 1] = { row[1], row[2] } end
-                self:showChecklist { kind = "group", title = _("Rows to leave out"), entries = entries, on_close = refresh }
-            end,
-        },
-        {
-            text = _("Collections to skip"), mandatory = count("collection"),
-            callback = function()
-                local entries, seen = {}, {}
-                pcall(function()
-                    for name in pairs(require("readcollection").coll or {}) do seen[name] = true end
-                end)
-                for name in pairs(ex:get("collection")) do seen[name] = true end
-                for name in pairs(seen) do entries[#entries + 1] = { name, name } end
-                table.sort(entries, function(a, b) return a[2]:lower() < b[2]:lower() end)
-                open("collection", _("Collections to skip"), entries)
-            end,
-        },
-        {
-            text = _("Suggest from a collection"), mandatory = G_reader_settings:readSetting(COLLECTION) or _("none"),
-            callback = function()
-                self:chooseCollection({ updateItems = refresh })
-            end,
-        },
-        {
-            text = _("Bring everything back\u{2026}"),
-            callback = function()
-                if ex:total() == 0 then
-                    UIManager:show(InfoMessage:new { text = _("Nothing is hidden."), timeout = 2 })
-                    return
-                end
-                UIManager:show(ConfirmBox:new {
-                    text = _("Forget everything you told Afterword not to suggest?\n\nYour collection choice stays."),
-                    ok_text = _("Forget it all"),
-                    ok_callback = function() ex:clear(); refresh() end,
-                })
-            end,
-        },
-    }
+-- What the person told Afterword not to suggest, in one place. `on_done` runs when it is closed.
+function Afterword:showPreferences(on_done)
+    require("afterword/prefs").show(on_done)
 end
 
 -- The list of suggestions. Tapping a book opens it; pressing and holding one offers to stop suggesting it.
@@ -513,7 +365,7 @@ function Afterword:showPicker(info, on_open, opts)
         close_callback = function() UIManager:close(menu) end,
         on_open = function(book) on_open(book.path) end,
         on_mark = function()
-            self:showPreferences(function()
+            self:showMarkMenu(function()
                 if self.picker then UIManager:close(self.picker); self.picker = nil end
                 self:showPicker(info, on_open, opts) -- the same list, with whatever changed
             end)

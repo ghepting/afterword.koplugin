@@ -91,8 +91,10 @@ function Header:new(opts)
                 dimen = Geom:new { w = width, h = h },
                 HorizontalGroup:new {
                     HorizontalSpan:new { width = sp(14) },
-                    -- A tap on the mark opens the preferences, when the owner gave something to open.
-                    opts.on_mark and mark and tappable(mark, opts.on_mark) or mark or HorizontalSpan:new { width = 0 },
+                    -- On a screen reached from another, a back arrow takes the mark's place; on the first, a tap on the mark opens its menu.
+                    opts.on_back and tappable(CenterContainer:new { dimen = Geom:new { w = sp(56), h = h },
+                        TextWidget:new { text = "\u{2190}", face = Font:getFace("tfont", 30), fgcolor = ink } }, opts.on_back)
+                        or opts.on_mark and mark and tappable(mark, opts.on_mark) or mark or HorizontalSpan:new { width = 0 },
                 },
             },
             RightContainer:new { dimen = Geom:new { w = width, h = h }, close },
@@ -109,6 +111,10 @@ function Header:new(opts)
 end
 
 -- What Menu calls on a title bar: it is a widget (size, painting, layout), with a title and icon it needs not change.
+Header.tappable = tappable
+-- The accent of the plugin's screens: the slate on colour, black on grey.
+function Header.accent() return Screen:isColorEnabled() and SLATE or Blitbuffer.COLOR_BLACK end
+
 function Header:getSize() return self.widget:getSize() end
 function Header:getHeight() return self.widget:getSize().h end
 function Header:paintTo(bb, x, y) self.dimen.x, self.dimen.y = x, y; self.widget:paintTo(bb, x, y) end
