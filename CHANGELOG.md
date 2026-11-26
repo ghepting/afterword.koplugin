@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/ghepting/afterword.koplugin/compare/v0.7.0...v0.8.0) (2026-11-26)
+
+
+### Features
+
+* Preferences screens, a hold sheet with Undo, and more to hide ([#19](https://github.com/ghepting/afterword.koplugin/issues/19)) ([a7c5ac4](https://github.com/ghepting/afterword.koplugin/commit/a7c5ac46d1becd3d9945aa085f492714948dbf55))
+
 ## [0.7.0](https://github.com/ghepting/afterword.koplugin/compare/v0.6.1...v0.7.0) (2026-11-26)
 
 
