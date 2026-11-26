@@ -28,6 +28,18 @@ local Afterword = WidgetContainer:extend {
 
 local SETTING = "afterword_enabled"
 local COLLECTION = "afterword_collection" -- the name of a collection to suggest from, or unset
+local HIDDEN = "afterword_hidden" -- { [path] = true }: books the person said not to suggest again
+
+local function hidden_books()
+    local set = G_reader_settings:readSetting(HIDDEN)
+    return type(set) == "table" and set or {}
+end
+
+local function count_hidden()
+    local n = 0
+    for _path in pairs(hidden_books()) do n = n + 1 end
+    return n
+end
 
 local function enabled()
     return G_reader_settings:readSetting(SETTING) ~= false -- on unless switched off
@@ -88,6 +100,16 @@ function Afterword:addToMainMenu(menu_items)
                     if touchmenu_instance then touchmenu_instance:closeMenu() end
                     self:showWhatNext()
                 end,
+            },
+            {
+                text_func = function()
+                    local n = count_hidden()
+                    return n > 0 and T(_("Hidden books (%1)\u{2026}"), n) or _("Hidden books")
+                end,
+                help_text = _("Books you pressed and held in the list to stop suggesting. Tap one to suggest it again."),
+                enabled_func = function() return count_hidden() > 0 end,
+                keep_menu_open = true,
+                callback = function(touchmenu_instance) self:showHidden(touchmenu_instance) end,
             },
             {
                 text = _("Check for updates"),
@@ -217,11 +239,70 @@ function Afterword:suggestions(file, without, just_finished)
             return info and tonumber(info.percent_finished) or 0
         end,
         modified_of = function(path) return lfs.attributes(path, "modification") or 0 end,
-        history = history, collection = collection,
+        history = history, collection = collection, hidden = hidden_books(),
     }
 end
 
--- The list of suggestions. Tapping a book opens it.
+-- Press and hold on a book in the list: stop suggesting it, after asking. Rebuilds the list without it.
+function Afterword:askToHide(book, again)
+    UIManager:show(ConfirmBox:new {
+        text = T(_("Stop suggesting \"%1\"?\n\nIt stays in your library. Hidden books are under Tools \u{203A} Afterword \u{203A} Hidden books."), book.title or "?"),
+        ok_text = _("Don't suggest"),
+        ok_callback = function()
+            local set = hidden_books()
+            set[book.path] = true
+            G_reader_settings:saveSetting(HIDDEN, set)
+            again()
+        end,
+    })
+end
+
+-- The books hidden from the list, to bring any back.
+function Afterword:showHidden(touchmenu_instance)
+    local Menu = require("ui/widget/menu")
+    local titles = {}
+    pcall(function()
+        local BIM = require("bookinfomanager")
+        BIM:openDbConnection()
+        for _i, r in ipairs(Store.books(BIM.db_conn)) do titles[r.path] = r.title end
+    end)
+    local menu
+    local function items()
+        local list = {}
+        for path in pairs(hidden_books()) do
+            local title = titles[path] or path:match("([^/]+)%.%w+$") or path
+            list[#list + 1] = {
+                text = title,
+                callback = function()
+                    UIManager:show(ConfirmBox:new {
+                        text = T(_("Suggest \"%1\" again?"), title),
+                        ok_text = _("Suggest"),
+                        ok_callback = function()
+                            local set = hidden_books()
+                            set[path] = nil
+                            G_reader_settings:saveSetting(HIDDEN, set)
+                            if count_hidden() == 0 then
+                                UIManager:close(menu)
+                            else
+                                menu:switchItemTable(nil, items())
+                            end
+                            if touchmenu_instance then touchmenu_instance:updateItems() end
+                        end,
+                    })
+                end,
+            }
+        end
+        table.sort(list, function(a, b) return a.text:lower() < b.text:lower() end)
+        return list
+    end
+    menu = Menu:new {
+        title = _("Hidden books"), item_table = items(), is_borderless = true, is_popout = false, covers_fullscreen = true,
+        close_callback = function() UIManager:close(menu) end,
+    }
+    UIManager:show(menu)
+end
+
+-- The list of suggestions. Tapping a book opens it; pressing and holding one offers to stop suggesting it.
 -- `opts.title` names it; `opts.without` leaves out the groups that are about the book you are leaving; `opts.just_finished` says the
 -- open book has been finished, so its sequel is next in line although it may not be marked finished yet.
 function Afterword:showPicker(info, on_open, opts)
@@ -274,6 +355,12 @@ function Afterword:showPicker(info, on_open, opts)
         is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
         close_callback = function() UIManager:close(menu) end,
         on_open = function(book) on_open(book.path) end,
+        on_hide = function(book)
+            self:askToHide(book, function()
+                if self.picker then UIManager:close(self.picker); self.picker = nil end
+                self:showPicker(info, on_open, opts) -- the same list, without the book
+            end)
+        end,
     }
     self.picker = menu
     UIManager:show(menu)

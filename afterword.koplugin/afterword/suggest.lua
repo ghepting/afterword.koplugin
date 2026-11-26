@@ -1,5 +1,6 @@
 -- What to read next, in groups. No KOReader in here: everything it needs comes in through `ctx`.
 --
+--   ctx.hidden       { [path] = true } books never to suggest (the person said not interested)
 --   ctx.follow       path of the book you read last, when none is open (the file browser): the series and the author follow on from it
 --   ctx.current      path of the book just finished, or the one open now (never suggested); nil when none is open
 --   ctx.finished     path of the book just finished, counted as finished although it may not be marked so yet (end of a book)
@@ -121,6 +122,7 @@ function Suggest.groups(ctx)
     local without = ctx.without or {}
     local taken = {}
     if ctx.current then taken[ctx.current] = true end
+    for path in pairs(ctx.hidden or {}) do taken[path] = true end -- never offered, by any group
     local base = ctx.current or ctx.follow -- the book the series and the author follow on from
     local out = {}
 

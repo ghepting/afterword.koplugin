@@ -131,7 +131,10 @@ local function authors_of(book) return book.authors and (tostring(book.authors):
 
 function PickRow:init()
     local entry = self.entry
-    self.ges_events = { TapSelect = { GestureRange:new { ges = "tap", range = self.dimen } } }
+    self.ges_events = {
+        TapSelect = { GestureRange:new { ges = "tap", range = self.dimen } },
+        HoldSelect = { GestureRange:new { ges = "hold", range = self.dimen } },
+    }
     local group = VerticalGroup:new { align = "left" }
     if entry.lead then
         group[#group + 1] = VerticalSpan:new { width = s(12) }
@@ -243,19 +246,30 @@ function PickRow:buildLists()
     return row
 end
 
-function PickRow:onTapSelect(arg, ges)
-    local entry, menu, d = self.entry, self.menu, self.d
+-- The book under a touch in this row, or nil.
+function PickRow:bookAt(ges)
+    local entry, d = self.entry, self.d
     local x = ges.pos.x - self.dimen.x - d.pad
-    if x < 0 then return true end
+    if x < 0 then return nil end
     if entry.kind == "picks" then
         local card = entry.cards[math.floor(x / (d.card_w + d.col_gap)) + 1]
-        if card then menu.on_open(card.book) end
-        return true
+        return card and card.book
     end
     local column = entry.columns[math.floor(x / (d.col_w + d.col_gap)) + 1]
     local y = ges.pos.y - self.dimen.y - (entry.lead and d.lead_h or entry.at_top and 0 or d.section_gap) - d.head_h
-    local book = column and y >= 0 and column.books[math.floor(y / (entry.row_h + d.row_gap)) + 1]
-    if book then menu.on_open(book) end
+    return column and y >= 0 and column.books[math.floor(y / (entry.row_h + d.row_gap)) + 1] or nil
+end
+
+function PickRow:onTapSelect(arg, ges)
+    local book = self:bookAt(ges)
+    if book then self.menu.on_open(book) end
+    return true
+end
+
+-- A long press on a book: the owner decides (it asks whether to stop suggesting it).
+function PickRow:onHoldSelect(arg, ges)
+    local book = self:bookAt(ges)
+    if book and self.menu.on_hide then self.menu.on_hide(book) end
     return true
 end
 
