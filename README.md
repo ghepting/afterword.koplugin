@@ -49,6 +49,22 @@ It is one screen, in portrait or landscape; the picks' covers take whatever heig
 
 The screenshots are from the KOReader desktop emulator, with reading numbers made up for the picture.
 
+## Hiding things
+
+Not everything in your library is something you want suggested. **Press and hold a book** for a sheet: don't suggest it, "not now" (it comes back in 30 days), or "fewer like this" (its author, its series, or the row it sits in). The list rebuilds at once, and a bar offers Undo.
+
+<p align="center">
+  <img src="assets/hide-sheet.png" width="400" alt="The list with a sheet rising over it: the book, then Don't suggest this book, Not now and Fewer like this">
+  <img src="assets/hide-undo.png" width="400" alt="The list after hiding a book, with a bar along the bottom reading Hidden, with an Undo button">
+</p>
+
+Everything you have hidden is in **Preferences**, from Tools › Afterword or by tapping the mark in the header: a row per kind with a count, each opening its own screen. Select any number and bring them back from the bar that floats at the bottom, which asks first.
+
+<p align="center">
+  <img src="assets/prefs-overview.png" width="400" alt="Preferences: hidden books as a strip of covers, then snoozed books, authors, series, rows of the list and collections, each with a count">
+  <img src="assets/prefs-select.png" width="400" alt="Hidden authors, two ticked, with a bar at the bottom reading 2 selected, Cancel and Bring back">
+</p>
+
 ## Settings
 
 **Tools › Afterword**, in a book or in the file browser:
