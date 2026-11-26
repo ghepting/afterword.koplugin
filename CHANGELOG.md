@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/ghepting/afterword.koplugin/compare/v0.6.1...v0.7.0) (2026-11-26)
+
+
+### Features
+
+* press and hold a book in the list to stop suggesting it, with a Hidden books list to undo ([#17](https://github.com/ghepting/afterword.koplugin/issues/17)) ([8d42e29](https://github.com/ghepting/afterword.koplugin/commit/8d42e29cb20d9610c8bcdc776d27ac212e16976e))
+
 ## [0.6.1](https://github.com/ghepting/afterword.koplugin/compare/v0.6.0...v0.6.1) (2026-11-22)
 
 
