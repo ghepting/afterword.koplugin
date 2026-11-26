@@ -37,7 +37,7 @@ It is one screen, in portrait or landscape; the picks' covers take whatever heig
   2. **Keep reading:** books you started and did not finish, with how far through each you are. It includes any half-read book in your library, not only recent ones.
   3. **More by** the author, **From** a collection you choose (see below), and **Recently added** are lists too.
 
-  The lists are columns of small-cover rows, three across, each with its title, author and a quiet grey line: which book of its series it is ("Book 3"), and how far through it you are. A book with no cover in KOReader's cache gets a plain grey card with its title. **Tap a cover or a Start reading button to open the book.** **Press and hold a book to stop suggesting it:** it asks first, then the list is rebuilt without it, and no group offers it again.
+  The lists are columns of small-cover rows, three across, each with its title, author and a quiet grey line: which book of its series it is ("Book 3"), and how far through it you are. A book with no cover in KOReader's cache gets a plain grey card with its title. **Tap a cover or a Start reading button to open the book.** **Press and hold a book for a sheet of choices:** don't suggest it, "not now" (it comes back in 30 days), or "fewer like this" (its author, its series, or the row it sits in). The list is rebuilt at once, and a bar offers Undo for a few seconds.
 
   Picked for you is one unread book that fits your taste, with the books you liked behind it; Something different is for when you want the opposite of the book you are on (or, from the file browser, the one you read last): one unread book that shares none of its tags and none you have rated down, and fits the tags you do like.
 
@@ -49,6 +49,22 @@ It is one screen, in portrait or landscape; the picks' covers take whatever heig
 
 The screenshots are from the KOReader desktop emulator, with reading numbers made up for the picture.
 
+## Hiding things
+
+Not everything in your library is something you want suggested. **Press and hold a book** for a sheet: don't suggest it, "not now" (it comes back in 30 days), or "fewer like this" (its author, its series, or the row it sits in). The list rebuilds at once, and a bar offers Undo.
+
+<p align="center">
+  <img src="assets/hide-sheet.png" width="400" alt="The list with a sheet rising over it: the book, then Don't suggest this book, Not now and Fewer like this">
+  <img src="assets/hide-undo.png" width="400" alt="The list after hiding a book, with a bar along the bottom reading Hidden, with an Undo button">
+</p>
+
+Everything you have hidden is in **Preferences**, from Tools › Afterword or by tapping the mark in the header: a row per kind with a count, each opening its own screen. Select any number and bring them back from the bar that floats at the bottom, which asks first.
+
+<p align="center">
+  <img src="assets/prefs-overview.png" width="400" alt="Preferences: hidden books as a strip of covers, then snoozed books, authors, series, rows of the list and collections, each with a count">
+  <img src="assets/prefs-select.png" width="400" alt="Hidden authors, two ticked, with a bar at the bottom reading 2 selected, Cancel and Bring back">
+</p>
+
 ## Settings
 
 **Tools › Afterword**, in a book or in the file browser:
@@ -56,7 +72,7 @@ The screenshots are from the KOReader desktop emulator, with reading numbers mad
 - **Show at the end of a book.** On by default. Off, KOReader's own end-of-book popup is used as before.
 - **What to read next.** The same list, whenever you want it, from a book you have open or from the file browser: for when you started a book and are not into it. From a book you have open it leaves out the next-in-series and more-by groups, which are about the book you are leaving; from the file browser they follow on from the book you read last. It does not touch the open book: it stays "reading" and turns up under "Keep reading". It is also in KOReader's action list (**Afterword: what to read next**), so a gesture, profile or hotkey can start it.
 - **Suggest from a collection….** Pick any KOReader collection, and Pick next also offers its first books, in its own order. A Bookshelf shelf is a collection, so it works with one. Choose **None** to turn it off.
-- **Hidden books.** The books you stopped suggesting, in a list; tap one to suggest it again. Greyed out when there are none.
+- **Preferences.** One screen for everything you told Afterword not to suggest, from Tools › Afterword or from the menu behind the mark in the list's header (the same menu has Check for updates and Close). It has a row per kind with a count: hidden books (with their covers), snoozed books, authors, series, rows of the list and collections. A kind opens its own screen: select any number with the checkboxes (or Select all) and bring them back from the bar that floats at the bottom, which asks before it does. Authors and series have **+ Hide an author…** to pick from your whole library without finding one of their books first. Rows have a switch each, and each collection is Normal, Suggest from or Skip. It is built to hold a long list: a filter box appears when there are many, and a screen pages only when it overflows.
 - **Check for updates.** Asks GitHub whether a newer Afterword has been released, only when you tap it. If there is one it shows the release notes and offers to download it, check it against GitHub's checksum, install it and restart KOReader. If anything goes wrong nothing is changed, and the old version is kept as `afterword.koplugin.old`. A copy that is a link to a source checkout is not updated from here.
 
 ## Install

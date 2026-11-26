@@ -28,18 +28,12 @@ local Afterword = WidgetContainer:extend {
 
 local SETTING = "afterword_enabled"
 local COLLECTION = "afterword_collection" -- the name of a collection to suggest from, or unset
-local HIDDEN = "afterword_hidden" -- { [path] = true }: books the person said not to suggest again
+local Exclusions = require("afterword/exclusions")
 
-local function hidden_books()
-    local set = G_reader_settings:readSetting(HIDDEN)
-    return type(set) == "table" and set or {}
-end
+-- What the person told Afterword not to suggest (books, authors, series, whole rows, collections, snoozes), in KOReader's settings.
+local function exclusions() return Exclusions.new(G_reader_settings) end
 
-local function count_hidden()
-    local n = 0
-    for _path in pairs(hidden_books()) do n = n + 1 end
-    return n
-end
+local SNOOZE_DAYS = 30
 
 local function enabled()
     return G_reader_settings:readSetting(SETTING) ~= false -- on unless switched off
@@ -103,13 +97,14 @@ function Afterword:addToMainMenu(menu_items)
             },
             {
                 text_func = function()
-                    local n = count_hidden()
-                    return n > 0 and T(_("Hidden books (%1)\u{2026}"), n) or _("Hidden books")
+                    local n = exclusions():total()
+                    return n > 0 and T(_("Preferences (%1 saved)\u{2026}"), n) or _("Preferences\u{2026}")
                 end,
-                help_text = _("Books you pressed and held in the list to stop suggesting. Tap one to suggest it again."),
-                enabled_func = function() return count_hidden() > 0 end,
+                help_text = _("What you told Afterword not to suggest: books, authors, series, rows of the list and collections. Also reached by tapping the mark in the list's header."),
                 keep_menu_open = true,
-                callback = function(touchmenu_instance) self:showHidden(touchmenu_instance) end,
+                callback = function(touchmenu_instance)
+                    self:showPreferences(function() if touchmenu_instance then touchmenu_instance:updateItems() end end)
+                end,
             },
             {
                 text = _("Check for updates"),
@@ -202,6 +197,15 @@ function Afterword:chooseCollection(touchmenu_instance)
     UIManager:show(dialog)
 end
 
+-- The books of a KOReader collection, in its order (none when it is gone).
+local function collection_paths(name)
+    local paths = {}
+    pcall(function()
+        for _i, item in ipairs(require("readcollection"):getOrderedCollection(name) or {}) do paths[#paths + 1] = item.file end
+    end)
+    return paths
+end
+
 -- What to read next, in groups, for the book just finished.
 function Afterword:suggestions(file, without, just_finished)
     local library, history, collection = {}, {}, nil
@@ -218,14 +222,11 @@ function Afterword:suggestions(file, without, just_finished)
             if item.file ~= manual then history[#history + 1] = item.file end
         end
     end)
+    local ex = exclusions()
     local name = G_reader_settings:readSetting(COLLECTION)
-    if name then
-        pcall(function()
-            local ReadCollection = require("readcollection")
-            local paths = {}
-            for _i, item in ipairs(ReadCollection:getOrderedCollection(name)) do paths[#paths + 1] = item.file end
-            collection = { name = name, paths = paths }
-        end)
+    if name and not ex:has("collection", name) then
+        local paths = collection_paths(name)
+        if #paths > 0 then collection = { name = name, paths = paths } end
     end
     local lfs = require("libs/libkoreader-lfs")
     return Suggest.groups {
@@ -239,67 +240,75 @@ function Afterword:suggestions(file, without, just_finished)
             return info and tonumber(info.percent_finished) or 0
         end,
         modified_of = function(path) return lfs.attributes(path, "modification") or 0 end,
-        history = history, collection = collection, hidden = hidden_books(),
+        history = history, collection = collection,
+        hidden = ex:hidden_paths(os.time(), collection_paths), hidden_authors = ex:get("author"), hidden_series = ex:get("series"),
+        hidden_groups = ex:get("group"),
     }
 end
 
--- Press and hold on a book in the list: stop suggesting it, after asking. Rebuilds the list without it.
-function Afterword:askToHide(book, again)
-    UIManager:show(ConfirmBox:new {
-        text = T(_("Stop suggesting \"%1\"?\n\nIt stays in your library. Hidden books are under Tools \u{203A} Afterword \u{203A} Hidden books."), book.title or "?"),
-        ok_text = _("Don't suggest"),
-        ok_callback = function()
-            local set = hidden_books()
-            set[book.path] = true
-            G_reader_settings:saveSetting(HIDDEN, set)
-            again()
-        end,
-    })
+local function first_author(book)
+    return tostring(book.authors or ""):match("[^\n]+")
 end
 
--- The books hidden from the list, to bring any back.
-function Afterword:showHidden(touchmenu_instance)
-    local Menu = require("ui/widget/menu")
-    local titles = {}
-    pcall(function()
-        local BIM = require("bookinfomanager")
-        BIM:openDbConnection()
-        for _i, r in ipairs(Store.books(BIM.db_conn)) do titles[r.path] = r.title end
-    end)
-    local menu
-    local function items()
-        local list = {}
-        for path in pairs(hidden_books()) do
-            local title = titles[path] or path:match("([^/]+)%.%w+$") or path
-            list[#list + 1] = {
-                text = title,
-                callback = function()
-                    UIManager:show(ConfirmBox:new {
-                        text = T(_("Suggest \"%1\" again?"), title),
-                        ok_text = _("Suggest"),
-                        ok_callback = function()
-                            local set = hidden_books()
-                            set[path] = nil
-                            G_reader_settings:saveSetting(HIDDEN, set)
-                            if count_hidden() == 0 then
-                                UIManager:close(menu)
-                            else
-                                menu:switchItemTable(nil, items())
-                            end
-                            if touchmenu_instance then touchmenu_instance:updateItems() end
-                        end,
-                    })
-                end,
-            }
-        end
-        table.sort(list, function(a, b) return a.text:lower() < b.text:lower() end)
-        return list
+-- Press and hold on a book in the list: a sheet of what to stop suggesting. `where` is the card or column it sits in (its heading and row).
+-- `again` rebuilds the list once something is hidden; an Undo bar then offers to put it back.
+function Afterword:askToHide(book, where, again)
+    local Sheet = require("afterword/sheet")
+    local ex = exclusions()
+    local function hide(kind, key, value, said)
+        ex:add(kind, key, value)
+        again()
+        Sheet.Toast.show { text = said, undo_text = _("Undo"), on_undo = function() ex:remove(kind, key); again() end }
     end
-    menu = Menu:new {
-        title = _("Hidden books"), item_table = items(), is_borderless = true, is_popout = false, covers_fullscreen = true,
-        close_callback = function() UIManager:close(menu) end,
+    local function fewer()
+        local options = {}
+        local author = first_author(book)
+        if author and author ~= "" then
+            options[#options + 1] = { title = T(_("Books by %1"), author), subtitle = _("Never suggest this author"),
+                callback = function() hide("author", author, nil, T(_("Hidden: books by %1"), author)) end }
+        end
+        if book.series and book.series ~= "" then
+            options[#options + 1] = { title = T(_("The series %1"), book.series), subtitle = _("Never suggest this series"),
+                callback = function() hide("series", book.series, nil, T(_("Hidden: the series %1"), book.series)) end }
+        end
+        if where and where.group then
+            options[#options + 1] = { title = T(_("The row \"%1\""), where.heading or where.group), subtitle = _("Hide the whole row"),
+                callback = function() hide("group", where.group, nil, T(_("Hidden: the row \"%1\""), where.heading or where.group)) end }
+        end
+        UIManager:show(Sheet.Sheet:new { title = book.title or "?", subtitle = _("Fewer like this"), cover_path = book.path, options = options, cancel_text = _("Cancel") })
+    end
+    local by = first_author(book)
+    local about = by or ""
+    local series = require("afterword/suggest").series_text(book)
+    if series then about = (about ~= "" and about .. " \u{00B7} " or "") .. series end
+    local options = {
+        { title = _("Don't suggest this book"), subtitle = _("It stays in your library"),
+          callback = function() hide("book", book.path, nil, T(_("Hidden: %1"), book.title or "?")) end },
+        { title = _("Not now"), subtitle = T(_("Ask again in %1 days"), SNOOZE_DAYS),
+          callback = function() hide("snooze", book.path, os.time() + SNOOZE_DAYS * Exclusions.DAY, T(_("Snoozed for %1 days: %2"), SNOOZE_DAYS, book.title or "?")) end },
+        { title = _("Fewer like this"), subtitle = _("Hide its author, its series, or this row"), callback = fewer },
     }
-    UIManager:show(menu)
+    UIManager:show(Sheet.Sheet:new { title = book.title or "?", subtitle = about, cover_path = book.path, options = options, cancel_text = _("Cancel") })
+end
+
+-- The mark in the list's header opens this, as ShelfSpace's logo does: the plugin's own few actions.
+function Afterword:showMarkMenu(after_preferences)
+    local dialog
+    local function act(fn) return function() UIManager:close(dialog); fn() end end
+    dialog = ButtonDialog:new {
+        title = _("Afterword"), title_align = "center",
+        buttons = {
+            { { text = _("Preferences"), callback = act(function() self:showPreferences(after_preferences) end) },
+              { text = _("Check for updates"), callback = act(function() self:checkForUpdates() end) } },
+            { { text = _("Close Afterword"), callback = act(function() if self.picker then UIManager:close(self.picker); self.picker = nil end end) } },
+        },
+    }
+    UIManager:show(dialog)
+end
+
+-- What the person told Afterword not to suggest, in one place. `on_done` runs when it is closed.
+function Afterword:showPreferences(on_done)
+    require("afterword/prefs").show(on_done)
 end
 
 -- The list of suggestions. Tapping a book opens it; pressing and holding one offers to stop suggesting it.
@@ -332,11 +341,11 @@ function Afterword:showPicker(info, on_open, opts)
         if single[g.name] and #cards < 2 then
             local book = g.books[1]
             cards[#cards + 1] = {
-                heading = name, book = book, why = (Suggest.explain(g.name, book, g)),
+                heading = name, group = g.name, book = book, why = (Suggest.explain(g.name, book, g)),
                 solid = #cards == 0, button = _("Start reading"),
             }
         else
-            columns[#columns + 1] = { heading = name, books = g.books, progress = g.name == "started" }
+            columns[#columns + 1] = { heading = name, group = g.name, books = g.books, progress = g.name == "started" }
         end
     end
     if #cards > 0 then items[#items + 1] = { kind = "picks", cards = cards } end
@@ -355,8 +364,14 @@ function Afterword:showPicker(info, on_open, opts)
         is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
         close_callback = function() UIManager:close(menu) end,
         on_open = function(book) on_open(book.path) end,
-        on_hide = function(book)
-            self:askToHide(book, function()
+        on_mark = function()
+            self:showMarkMenu(function()
+                if self.picker then UIManager:close(self.picker); self.picker = nil end
+                self:showPicker(info, on_open, opts) -- the same list, with whatever changed
+            end)
+        end,
+        on_hide = function(book, where)
+            self:askToHide(book, where, function()
                 if self.picker then UIManager:close(self.picker); self.picker = nil end
                 self:showPicker(info, on_open, opts) -- the same list, without the book
             end)
