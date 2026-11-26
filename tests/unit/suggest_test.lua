@@ -404,3 +404,32 @@ T.test("hiding the pick for you makes room for the next best, not nothing", func
     local second = find(groups({ [pick] = true }), "for_you")
     T.eq(second ~= nil and second.books[1].path ~= pick, true)
 end)
+
+T.test("a hidden author or series is offered by no group, however the name is written", function()
+    local groups = Suggest.groups(ctx { current = "/new1", finished = "/new1", rating_of = function() return 0 end,
+        hidden_authors = { ["robert  GALBRAITH"] = true }, hidden_series = { ["potter"] = true } })
+    for _, g in ipairs(groups) do
+        for _, b in ipairs(g.books) do
+            T.eq(tostring(b.authors):find("Galbraith", 1, true), nil)
+            T.eq(b.series == "Potter", false)
+        end
+    end
+end)
+
+T.test("a hidden row is left out and its books go to the next row that wants them", function()
+    local lib = {
+        { path = "/a", title = "A", authors = "X", keywords = "Fantasy" },
+        { path = "/b", title = "B", authors = "Y", keywords = "Fantasy" },
+    }
+    local function groups(hidden_groups)
+        return Suggest.groups { library = lib, status_of = function() return "new" end, rating_of = function() return 0 end,
+            history = {}, hidden_groups = hidden_groups, modified_of = function() return 1 end }
+    end
+    local with = groups(nil)
+    local first = with[1].name
+    local without = groups({ [first] = true })
+    T.eq(find(without, first), nil)
+    local count = 0
+    for _, g in ipairs(without) do count = count + #g.books end
+    T.eq(count > 0, true) -- the books it would have taken are still offered, in another row
+end)

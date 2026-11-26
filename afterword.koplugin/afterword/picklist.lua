@@ -246,18 +246,18 @@ function PickRow:buildLists()
     return row
 end
 
--- The book under a touch in this row, or nil.
+-- The book under a touch in this row, or nil; then the card or column it is in (its heading and group).
 function PickRow:bookAt(ges)
     local entry, d = self.entry, self.d
     local x = ges.pos.x - self.dimen.x - d.pad
     if x < 0 then return nil end
     if entry.kind == "picks" then
         local card = entry.cards[math.floor(x / (d.card_w + d.col_gap)) + 1]
-        return card and card.book
+        return card and card.book, card
     end
     local column = entry.columns[math.floor(x / (d.col_w + d.col_gap)) + 1]
     local y = ges.pos.y - self.dimen.y - (entry.lead and d.lead_h or entry.at_top and 0 or d.section_gap) - d.head_h
-    return column and y >= 0 and column.books[math.floor(y / (entry.row_h + d.row_gap)) + 1] or nil
+    return column and y >= 0 and column.books[math.floor(y / (entry.row_h + d.row_gap)) + 1] or nil, column
 end
 
 function PickRow:onTapSelect(arg, ges)
@@ -268,8 +268,8 @@ end
 
 -- A long press on a book: the owner decides (it asks whether to stop suggesting it).
 function PickRow:onHoldSelect(arg, ges)
-    local book = self:bookAt(ges)
-    if book and self.menu.on_hide then self.menu.on_hide(book) end
+    local book, where = self:bookAt(ges)
+    if book and self.menu.on_hide then self.menu.on_hide(book, where) end
     return true
 end
 
@@ -282,7 +282,7 @@ local PickMenu = Menu:extend {}
 
 -- The title bar is Afterword's own header (mark, title, close), made at the screen's width each time Menu lays itself out.
 function PickMenu:init()
-    self.custom_title_bar = Header:new { title = _("Afterword"), width = Screen:getWidth(), on_close = function() self:onClose() end }
+    self.custom_title_bar = Header:new { title = _("Afterword"), width = Screen:getWidth(), on_close = function() self:onClose() end, on_mark = self.on_mark }
     Menu.init(self)
     self.footer_box = self[1][1][3] -- the page arrows' container, in Menu's layout: content_group, page_return, footer
     self.page_arrows = self.footer_box and self.footer_box[1]

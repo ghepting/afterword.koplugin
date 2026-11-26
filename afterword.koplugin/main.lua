@@ -28,18 +28,21 @@ local Afterword = WidgetContainer:extend {
 
 local SETTING = "afterword_enabled"
 local COLLECTION = "afterword_collection" -- the name of a collection to suggest from, or unset
-local HIDDEN = "afterword_hidden" -- { [path] = true }: books the person said not to suggest again
+local Exclusions = require("afterword/exclusions")
+local Header = require("afterword/header")
+local Screen = Device.screen
 
-local function hidden_books()
-    local set = G_reader_settings:readSetting(HIDDEN)
-    return type(set) == "table" and set or {}
-end
+-- What the person told Afterword not to suggest (books, authors, series, whole rows, collections, snoozes), in KOReader's settings.
+local function exclusions() return Exclusions.new(G_reader_settings) end
 
-local function count_hidden()
-    local n = 0
-    for _path in pairs(hidden_books()) do n = n + 1 end
-    return n
-end
+-- The rows of the list a person can hide, in the order they are shown, with the name each is known by.
+local ROWS = {
+    { "next_in_series", _("Next in the series") }, { "picked_for_you", _("Picked for you") },
+    { "something_different", _("Something different") }, { "started", _("Keep reading") },
+    { "more_by_author", _("More by this author") }, { "collection", _("From your collection") },
+    { "recently_added", _("Recently added") }, { "on_hold", _("On hold") },
+}
+local SNOOZE_DAYS = 30
 
 local function enabled()
     return G_reader_settings:readSetting(SETTING) ~= false -- on unless switched off
@@ -103,13 +106,14 @@ function Afterword:addToMainMenu(menu_items)
             },
             {
                 text_func = function()
-                    local n = count_hidden()
-                    return n > 0 and T(_("Hidden books (%1)\u{2026}"), n) or _("Hidden books")
+                    local n = exclusions():total()
+                    return n > 0 and T(_("Preferences (%1 saved)\u{2026}"), n) or _("Preferences\u{2026}")
                 end,
-                help_text = _("Books you pressed and held in the list to stop suggesting. Tap one to suggest it again."),
-                enabled_func = function() return count_hidden() > 0 end,
+                help_text = _("What you told Afterword not to suggest: books, authors, series, rows of the list and collections. Also reached by tapping the mark in the list's header."),
                 keep_menu_open = true,
-                callback = function(touchmenu_instance) self:showHidden(touchmenu_instance) end,
+                callback = function(touchmenu_instance)
+                    self:showPreferences(function() if touchmenu_instance then touchmenu_instance:updateItems() end end)
+                end,
             },
             {
                 text = _("Check for updates"),
@@ -202,6 +206,15 @@ function Afterword:chooseCollection(touchmenu_instance)
     UIManager:show(dialog)
 end
 
+-- The books of a KOReader collection, in its order (none when it is gone).
+local function collection_paths(name)
+    local paths = {}
+    pcall(function()
+        for _i, item in ipairs(require("readcollection"):getOrderedCollection(name) or {}) do paths[#paths + 1] = item.file end
+    end)
+    return paths
+end
+
 -- What to read next, in groups, for the book just finished.
 function Afterword:suggestions(file, without, just_finished)
     local library, history, collection = {}, {}, nil
@@ -218,14 +231,11 @@ function Afterword:suggestions(file, without, just_finished)
             if item.file ~= manual then history[#history + 1] = item.file end
         end
     end)
+    local ex = exclusions()
     local name = G_reader_settings:readSetting(COLLECTION)
-    if name then
-        pcall(function()
-            local ReadCollection = require("readcollection")
-            local paths = {}
-            for _i, item in ipairs(ReadCollection:getOrderedCollection(name)) do paths[#paths + 1] = item.file end
-            collection = { name = name, paths = paths }
-        end)
+    if name and not ex:has("collection", name) then
+        local paths = collection_paths(name)
+        if #paths > 0 then collection = { name = name, paths = paths } end
     end
     local lfs = require("libs/libkoreader-lfs")
     return Suggest.groups {
@@ -239,67 +249,214 @@ function Afterword:suggestions(file, without, just_finished)
             return info and tonumber(info.percent_finished) or 0
         end,
         modified_of = function(path) return lfs.attributes(path, "modification") or 0 end,
-        history = history, collection = collection, hidden = hidden_books(),
+        history = history, collection = collection,
+        hidden = ex:hidden_paths(os.time(), collection_paths), hidden_authors = ex:get("author"), hidden_series = ex:get("series"),
+        hidden_groups = ex:get("group"),
     }
 end
 
--- Press and hold on a book in the list: stop suggesting it, after asking. Rebuilds the list without it.
-function Afterword:askToHide(book, again)
-    UIManager:show(ConfirmBox:new {
-        text = T(_("Stop suggesting \"%1\"?\n\nIt stays in your library. Hidden books are under Tools \u{203A} Afterword \u{203A} Hidden books."), book.title or "?"),
-        ok_text = _("Don't suggest"),
-        ok_callback = function()
-            local set = hidden_books()
-            set[book.path] = true
-            G_reader_settings:saveSetting(HIDDEN, set)
-            again()
-        end,
-    })
+local function first_author(book)
+    return tostring(book.authors or ""):match("[^\n]+")
 end
 
--- The books hidden from the list, to bring any back.
-function Afterword:showHidden(touchmenu_instance)
+-- Press and hold on a book in the list: what to stop suggesting. `where` is the card or column it sits in (its heading and row).
+-- `again` rebuilds the list without what was hidden.
+function Afterword:askToHide(book, where, again)
+    local ex = exclusions()
+    local dialog
+    local function hide(kind, key, value)
+        return function()
+            UIManager:close(dialog)
+            ex:add(kind, key, value)
+            again()
+        end
+    end
+    local buttons = {
+        { { text = _("Don't suggest this book"), callback = hide("book", book.path) } },
+        { { text = T(_("Not now: ask again in %1 days"), SNOOZE_DAYS), callback = hide("snooze", book.path, os.time() + SNOOZE_DAYS * Exclusions.DAY) } },
+    }
+    local author = first_author(book)
+    if author and author ~= "" then
+        buttons[#buttons + 1] = { { text = T(_("Never suggest books by %1"), author), callback = hide("author", author) } }
+    end
+    if book.series and book.series ~= "" then
+        buttons[#buttons + 1] = { { text = T(_("Never suggest the series %1"), book.series), callback = hide("series", book.series) } }
+    end
+    if where and where.group then
+        buttons[#buttons + 1] = { { text = T(_("Hide the row \"%1\""), where.heading or where.group), callback = hide("group", where.group) } }
+    end
+    buttons[#buttons + 1] = { { text = _("Cancel"), callback = function() UIManager:close(dialog) end } }
+    dialog = ButtonDialog:new {
+        title = T(_("%1\n\nStays in your library. Undo any of this under Tools \u{203A} Afterword \u{203A} Preferences."), book.title or "?"),
+        buttons = buttons,
+    }
+    UIManager:show(dialog)
+end
+
+-- One kind of exclusion as a checklist: a check means it stays out; unchecking brings it back, at once. `entries` is a list of
+-- { key, label, note }; `restore_all` adds a first row that unchecks everything. `value_of(key)` is what is stored when it is checked again.
+function Afterword:showChecklist(opts)
     local Menu = require("ui/widget/menu")
+    local ex = exclusions()
+    local checked, saved = {}, {}
+    for _i, e in ipairs(opts.entries) do
+        saved[e[1]] = ex:get(opts.kind)[e[1]]
+        checked[e[1]] = ex:has(opts.kind, e[1])
+    end
+    local menu
+    local function set(key, on)
+        checked[key] = on
+        if on then ex:add(opts.kind, key, saved[key]) else ex:remove(opts.kind, key) end
+    end
+    local function items()
+        local list = {}
+        if opts.restore_all then
+            list[#list + 1] = {
+                text = _("Bring them all back"),
+                callback = function()
+                    for _i, e in ipairs(opts.entries) do set(e[1], false) end
+                    menu:switchItemTable(nil, items(), 1)
+                end,
+            }
+        end
+        for _i, e in ipairs(opts.entries) do
+            local index = #list + 1
+            list[#list + 1] = {
+                text = (checked[e[1]] and "\u{2611}  " or "\u{2610}  ") .. e[2],
+                mandatory = e[3],
+                callback = function()
+                    set(e[1], not checked[e[1]])
+                    menu:switchItemTable(nil, items(), index)
+                end,
+            }
+        end
+        return list
+    end
+    menu = Menu:new {
+        title = opts.title, item_table = items(), is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
+        custom_title_bar = Header:new { title = opts.title, width = Screen:getWidth(), on_close = function() menu:onClose() end },
+        close_callback = function()
+            UIManager:close(menu)
+            if opts.on_close then opts.on_close() end
+        end,
+    }
+    UIManager:show(menu)
+end
+
+-- A book's title by its path, for the lists of books.
+local function titles_by_path()
     local titles = {}
     pcall(function()
         local BIM = require("bookinfomanager")
         BIM:openDbConnection()
         for _i, r in ipairs(Store.books(BIM.db_conn)) do titles[r.path] = r.title end
     end)
+    return titles
+end
+
+local function days_until(time) return math.max(1, math.ceil((time - os.time()) / Exclusions.DAY)) end
+
+-- Everything the person has told Afterword not to suggest, in one place: a row per kind with how many, each opening a checklist.
+-- `on_close` runs when it is closed, for whatever was open behind it to refresh.
+function Afterword:showPreferences(on_close)
+    local Menu = require("ui/widget/menu")
     local menu
-    local function items()
-        local list = {}
-        for path in pairs(hidden_books()) do
-            local title = titles[path] or path:match("([^/]+)%.%w+$") or path
-            list[#list + 1] = {
-                text = title,
-                callback = function()
-                    UIManager:show(ConfirmBox:new {
-                        text = T(_("Suggest \"%1\" again?"), title),
-                        ok_text = _("Suggest"),
-                        ok_callback = function()
-                            local set = hidden_books()
-                            set[path] = nil
-                            G_reader_settings:saveSetting(HIDDEN, set)
-                            if count_hidden() == 0 then
-                                UIManager:close(menu)
-                            else
-                                menu:switchItemTable(nil, items())
-                            end
-                            if touchmenu_instance then touchmenu_instance:updateItems() end
-                        end,
-                    })
-                end,
-            }
-        end
-        table.sort(list, function(a, b) return a.text:lower() < b.text:lower() end)
-        return list
-    end
+    local function refresh() if menu then menu:switchItemTable(nil, self:preferenceItems(refresh)) end end
     menu = Menu:new {
-        title = _("Hidden books"), item_table = items(), is_borderless = true, is_popout = false, covers_fullscreen = true,
-        close_callback = function() UIManager:close(menu) end,
+        title = _("Preferences"), item_table = self:preferenceItems(refresh), is_borderless = true, is_popout = false,
+        covers_fullscreen = true, is_enable_shortcut = false,
+        custom_title_bar = Header:new { title = _("Preferences"), width = Screen:getWidth(), on_close = function() menu:onClose() end },
+        close_callback = function()
+            UIManager:close(menu)
+            if on_close then on_close() end
+        end,
     }
     UIManager:show(menu)
+end
+
+function Afterword:preferenceItems(refresh)
+    local ex = exclusions()
+    local titles = titles_by_path()
+    local function open(kind, title, entries, restore_all)
+        if #entries == 0 then
+            UIManager:show(InfoMessage:new { text = _("Nothing here yet."), timeout = 2 })
+            return
+        end
+        self:showChecklist { kind = kind, title = title, entries = entries, restore_all = restore_all, on_close = refresh }
+    end
+    local function names(kind)
+        local entries = {}
+        for _i, key in ipairs(ex:keys(kind)) do entries[#entries + 1] = { key, key } end
+        return entries
+    end
+    local function count(kind) return ex:count(kind) > 0 and tostring(ex:count(kind)) or "" end
+    return {
+        {
+            text = _("Books"), mandatory = count("book"),
+            callback = function()
+                local entries = {}
+                for _i, path in ipairs(ex:keys("book")) do
+                    entries[#entries + 1] = { path, titles[path] or path:match("([^/]+)%.%w+$") or path }
+                end
+                table.sort(entries, function(a, b) return a[2]:lower() < b[2]:lower() end)
+                open("book", _("Hidden books"), entries, true)
+            end,
+        },
+        {
+            text = _("Snoozed books"), mandatory = count("snooze"),
+            callback = function()
+                local entries = {}
+                for path, back in pairs(ex:get("snooze")) do
+                    entries[#entries + 1] = { path, titles[path] or path:match("([^/]+)%.%w+$") or path, T(_("back in %1 days"), days_until(back)) }
+                end
+                table.sort(entries, function(a, b) return a[2]:lower() < b[2]:lower() end)
+                open("snooze", _("Snoozed books"), entries, true)
+            end,
+        },
+        { text = _("Authors"), mandatory = count("author"), callback = function() open("author", _("Hidden authors"), names("author"), true) end },
+        { text = _("Series"), mandatory = count("series"), callback = function() open("series", _("Hidden series"), names("series"), true) end },
+        {
+            text = _("Rows of the list"), mandatory = count("group"),
+            callback = function()
+                local entries = {}
+                for _i, row in ipairs(ROWS) do entries[#entries + 1] = { row[1], row[2] } end
+                self:showChecklist { kind = "group", title = _("Rows to leave out"), entries = entries, on_close = refresh }
+            end,
+        },
+        {
+            text = _("Collections to skip"), mandatory = count("collection"),
+            callback = function()
+                local entries, seen = {}, {}
+                pcall(function()
+                    for name in pairs(require("readcollection").coll or {}) do seen[name] = true end
+                end)
+                for name in pairs(ex:get("collection")) do seen[name] = true end
+                for name in pairs(seen) do entries[#entries + 1] = { name, name } end
+                table.sort(entries, function(a, b) return a[2]:lower() < b[2]:lower() end)
+                open("collection", _("Collections to skip"), entries)
+            end,
+        },
+        {
+            text = _("Suggest from a collection"), mandatory = G_reader_settings:readSetting(COLLECTION) or _("none"),
+            callback = function()
+                self:chooseCollection({ updateItems = refresh })
+            end,
+        },
+        {
+            text = _("Bring everything back\u{2026}"),
+            callback = function()
+                if ex:total() == 0 then
+                    UIManager:show(InfoMessage:new { text = _("Nothing is hidden."), timeout = 2 })
+                    return
+                end
+                UIManager:show(ConfirmBox:new {
+                    text = _("Forget everything you told Afterword not to suggest?\n\nYour collection choice stays."),
+                    ok_text = _("Forget it all"),
+                    ok_callback = function() ex:clear(); refresh() end,
+                })
+            end,
+        },
+    }
 end
 
 -- The list of suggestions. Tapping a book opens it; pressing and holding one offers to stop suggesting it.
@@ -332,11 +489,11 @@ function Afterword:showPicker(info, on_open, opts)
         if single[g.name] and #cards < 2 then
             local book = g.books[1]
             cards[#cards + 1] = {
-                heading = name, book = book, why = (Suggest.explain(g.name, book, g)),
+                heading = name, group = g.name, book = book, why = (Suggest.explain(g.name, book, g)),
                 solid = #cards == 0, button = _("Start reading"),
             }
         else
-            columns[#columns + 1] = { heading = name, books = g.books, progress = g.name == "started" }
+            columns[#columns + 1] = { heading = name, group = g.name, books = g.books, progress = g.name == "started" }
         end
     end
     if #cards > 0 then items[#items + 1] = { kind = "picks", cards = cards } end
@@ -355,8 +512,14 @@ function Afterword:showPicker(info, on_open, opts)
         is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
         close_callback = function() UIManager:close(menu) end,
         on_open = function(book) on_open(book.path) end,
-        on_hide = function(book)
-            self:askToHide(book, function()
+        on_mark = function()
+            self:showPreferences(function()
+                if self.picker then UIManager:close(self.picker); self.picker = nil end
+                self:showPicker(info, on_open, opts) -- the same list, with whatever changed
+            end)
+        end,
+        on_hide = function(book, where)
+            self:askToHide(book, where, function()
                 if self.picker then UIManager:close(self.picker); self.picker = nil end
                 self:showPicker(info, on_open, opts) -- the same list, without the book
             end)

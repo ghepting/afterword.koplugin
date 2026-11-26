@@ -89,7 +89,11 @@ function Header:new(opts)
             },
             LeftContainer:new {
                 dimen = Geom:new { w = width, h = h },
-                HorizontalGroup:new { HorizontalSpan:new { width = sp(14) }, mark or HorizontalSpan:new { width = 0 } },
+                HorizontalGroup:new {
+                    HorizontalSpan:new { width = sp(14) },
+                    -- A tap on the mark opens the preferences, when the owner gave something to open.
+                    opts.on_mark and mark and tappable(mark, opts.on_mark) or mark or HorizontalSpan:new { width = 0 },
+                },
             },
             RightContainer:new { dimen = Geom:new { w = width, h = h }, close },
         },

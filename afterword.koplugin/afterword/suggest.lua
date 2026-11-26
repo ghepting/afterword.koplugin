@@ -1,6 +1,8 @@
 -- What to read next, in groups. No KOReader in here: everything it needs comes in through `ctx`.
 --
 --   ctx.hidden       { [path] = true } books never to suggest (the person said not interested)
+--   ctx.hidden_authors  { [name] = true } authors never to suggest; ctx.hidden_series likewise for series names
+--   ctx.hidden_groups   { [group name] = true } rows of the list to leave out (their books go to the next row that wants them)
 --   ctx.follow       path of the book you read last, when none is open (the file browser): the series and the author follow on from it
 --   ctx.current      path of the book just finished, or the one open now (never suggested); nil when none is open
 --   ctx.finished     path of the book just finished, counted as finished although it may not be marked so yet (end of a book)
@@ -123,11 +125,22 @@ function Suggest.groups(ctx)
     local taken = {}
     if ctx.current then taken[ctx.current] = true end
     for path in pairs(ctx.hidden or {}) do taken[path] = true end -- never offered, by any group
+    local no_authors, no_series = {}, {}
+    for name in pairs(ctx.hidden_authors or {}) do no_authors[norm(name)] = true end
+    for name in pairs(ctx.hidden_series or {}) do no_series[norm(name)] = true end
+    if next(no_authors) or next(no_series) then
+        for _i, r in ipairs(ctx.library or {}) do
+            local series_out = norm(r.series) ~= "" and no_series[norm(r.series)]
+            if series_out or shares_author(no_authors, authors_of(r)) then taken[r.path] = true end
+        end
+    end
     local base = ctx.current or ctx.follow -- the book the series and the author follow on from
     local out = {}
 
     local function offer(id, name, books)
-        if #books > 0 then out[#out + 1] = { id = id, name = name, books = books } end
+        if (ctx.hidden_groups or {})[name] then
+            for _i, b in ipairs(books) do taken[b.path] = nil end -- left out: the next row may have them
+        elseif #books > 0 then out[#out + 1] = { id = id, name = name, books = books } end
     end
     -- Adds a book to a group when it is not the current one, not finished, and not already in an earlier group.
     -- `resume`: a book you already started, which is not "out of order" whatever its place in a series.
@@ -216,7 +229,8 @@ function Suggest.groups(ctx)
     if ctx.collection and ctx.collection.paths then
         for _i, path in ipairs(ctx.collection.paths) do take(collection, path) end
     end
-    if #collection > 0 then out[#out + 1] = { id = "collection", name = "collection", collection_name = ctx.collection.name, books = collection } end
+    offer("collection", "collection", collection)
+    if out[#out] and out[#out].id == "collection" then out[#out].collection_name = ctx.collection.name end
 
     -- 4. Picked for you: one unread book whose tags match the books you have rated highly or finished.
     local foryou = {}
