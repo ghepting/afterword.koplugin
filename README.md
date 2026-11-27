@@ -46,7 +46,7 @@ It is one screen, in portrait or landscape; the picks' covers take whatever heig
 **A badge says when a book skips ahead.** If you own book 5 but not book 4, the book's card carries a small black badge: "Book 4 missing", or "3 books missing" when several before it are not in your library. It shows on the picks and, shorter ("2 missing"), beside "Book 8" in the lists, so you know before you choose. On the lists it is a quieter, outlined pill, and a book you are reading shows its percentage at the end of its progress bar.
 
 <p align="center">
-  <img src="assets/series-gap.png" width="400" alt="The list with a Next in the series pick, The Hallmarked Man, carrying a black badge reading 2 books missing">
+  <img src="assets/series-gap.png" width="400" alt="The list with both picks carrying a black badge reading Book 1 missing, and a quieter outlined badge reading 2 missing beside the book number in the columns below">
 </p>
 
 **Picked for you** is worked out on the device from what KOReader already knows. A book you rated 4 or 5 counts for its genre tags, a 3 a little, a 1 or 2 against them; a book you finished without rating counts a little for them, and one you put on hold a little against. An unread book is scored by how many of its tags you have liked, with rare tags counting for more than ones nearly everything has, and books in a language you do not read are left out. It needs at least two books you liked before it will guess, and books with no tags are never offered. Nothing is sent anywhere.
