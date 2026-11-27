@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/ghepting/afterword.koplugin/compare/v0.8.0...v0.9.0) (2026-11-27)
+
+
+### Features
+
+* a badge for books that skip ahead in a series, when each On hold book was put down, and a way back from an empty list ([#21](https://github.com/ghepting/afterword.koplugin/issues/21)) ([5495e1f](https://github.com/ghepting/afterword.koplugin/commit/5495e1f43306909bcc19a123f446058bf6853f6f))
+
 ## [0.8.0](https://github.com/ghepting/afterword.koplugin/compare/v0.7.0...v0.8.0) (2026-11-26)
 
 
