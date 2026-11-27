@@ -13,6 +13,8 @@
 --   ctx.status_of    function(path) -> "new" | "reading" | "complete" | "abandoned"  (a book never opened is "new")
 --   ctx.modified_of  function(path) -> when the file was added, a number (larger is newer)
 --   ctx.percent_of   function(path) -> how far through a book you are, 0 to 1 (optional; shown on the books you started)
+--   ctx.put_down_of  function(path) -> when the book was put on hold, as a time (optional; it orders and labels the On hold row)
+--   ctx.now          the time now (default os.time()); the On hold labels are measured from it
 --   ctx.history      { path, ... } books you have opened, most recent first (started books outside it are found in the library)
 --   ctx.collection   { name, paths } a collection chosen in settings, in its own order; or nil
 --   ctx.per_group    how many in each group (default 4, a shelf of covers)
@@ -50,6 +52,33 @@ function Suggest.series_text(book)
     local index = tonumber(book.series_index)
     if index then return T(_("Book %1 of %2"), string.format("%g", index), book.series) end
     return book.series
+end
+
+-- "Book 4 missing", "3 books missing": what a badge says about the books before this one that are not in the library; nil for none.
+function Suggest.gap_text(book)
+    local n = book and book.missing and #book.missing or 0
+    if n == 0 then return nil end
+    if n == 1 then return T(_("Book %1 missing"), string.format("%d", book.missing[1])) end
+    return T(_("%1 books missing"), n)
+end
+
+-- The same in fewer words, for the narrow list columns: "1 missing", "3 missing"; nil for none.
+function Suggest.gap_short(book)
+    local n = book and book.missing and #book.missing or 0
+    return n > 0 and T(_("%1 missing"), n) or nil
+end
+
+-- "4 months ago", from a time and now (the On hold heading above it says what it is the time of); nil when the time is not known.
+function Suggest.put_down_text(put_down, now)
+    put_down = tonumber(put_down)
+    if not put_down or put_down <= 0 then return nil end
+    local days = math.floor(((now or os.time()) - put_down) / 86400)
+    if days < 1 then return _("Today") end
+    if days < 14 then return T(days == 1 and _("%1 day ago") or _("%1 days ago"), days) end
+    if days < 60 then return T(_("%1 weeks ago"), math.floor(days / 7)) end
+    if days < 365 then return T(_("%1 months ago"), math.floor(days / 30)) end
+    if days < 730 then return _("A year ago") end
+    return T(_("%1 years ago"), math.floor(days / 365))
 end
 
 -- The second line under a title: "Colleen Hoover \u{00B7} Book 3 of Series", with whichever part the book has; nil when it has neither.
@@ -160,6 +189,10 @@ function Suggest.groups(ctx)
             series = record and record.series, series_index = record and record.series_index, authors = record and record.authors,
             tags = tags, language = record and record.language, description = record and record.description,
         }
+        if not resume or (extra and extra.percent) then -- not the On hold row: those were put down long ago
+            local gaps = Series.missing(ctx.library or {}, path)
+            if #gaps > 0 then book.missing = gaps end
+        end
         for key, value in pairs(extra or {}) do book[key] = value end
         group[#group + 1] = book
     end
@@ -333,14 +366,17 @@ function Suggest.groups(ctx)
         for _i, r in ipairs(ctx.library or {}) do
             if not taken[r.path] and status_of(r.path) == "abandoned" then held[#held + 1] = r end
         end
-        local waited = {}
-        for _i, r in ipairs(held) do waited[r.path] = tonumber(modified_of(r.path)) or 0 end
+        local waited, when = {}, {}
+        for _i, r in ipairs(held) do
+            when[r.path] = ctx.put_down_of and tonumber(ctx.put_down_of(r.path)) or nil
+            waited[r.path] = when[r.path] or tonumber(modified_of(r.path)) or 0
+        end
         table.sort(held, function(a, b)
             if waited[a.path] ~= waited[b.path] then return waited[a.path] < waited[b.path] end
             return tostring(a.path) < tostring(b.path)
         end)
         local on_hold = {}
-        for _i, r in ipairs(held) do take(on_hold, r.path, nil, true) end
+        for _i, r in ipairs(held) do take(on_hold, r.path, nil, true, { note_line = Suggest.put_down_text(when[r.path], ctx.now) }) end
         offer("on_hold", "on_hold", on_hold)
     end
 

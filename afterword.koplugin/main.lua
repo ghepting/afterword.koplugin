@@ -240,6 +240,14 @@ function Afterword:suggestions(file, without, just_finished)
             return info and tonumber(info.percent_finished) or 0
         end,
         modified_of = function(path) return lfs.attributes(path, "modification") or 0 end,
+        put_down_of = function(path) -- the day the status was set to On hold, kept by KOReader with the book's settings
+            local ok, when = pcall(function()
+                local summary = require("docsettings"):open(path):readSetting("summary")
+                local y, m, d = tostring(summary and summary.modified or ""):match("^(%d+)-(%d+)-(%d+)")
+                return y and os.time { year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 12 } or nil
+            end)
+            return ok and when or nil
+        end,
         history = history, collection = collection,
         hidden = ex:hidden_paths(os.time(), collection_paths), hidden_authors = ex:get("author"), hidden_series = ex:get("series"),
         hidden_groups = ex:get("group"),
@@ -311,6 +319,41 @@ function Afterword:showPreferences(on_done)
     require("afterword/prefs").show(on_done)
 end
 
+-- The list when it has nothing in it: either nothing has been hidden (so there is nothing to suggest from), or what was hidden
+-- covers the whole library, and Preferences is the way back.
+function Afterword:showNothing(reshow)
+    local Empty = require("afterword/empty")
+    local ex = exclusions()
+    if ex:total() == 0 then
+        UIManager:show(Empty:new {
+            heading = _("Nothing to suggest yet"),
+            text = _("Afterword suggests from the books in your library.\n\nOnce you add some, it picks the next one in a series you are reading, something you will like, and what you left half done."),
+            buttons = { { text = _("Close"), solid = true, callback = function() end } },
+        })
+        return
+    end
+    local parts = {}
+    local function count(kind, one, many)
+        local n = ex:count(kind)
+        if n > 0 then parts[#parts + 1] = T(n == 1 and one or many, n) end
+    end
+    local books = ex:count("book") + ex:count("snooze")
+    if books > 0 then parts[#parts + 1] = T(books == 1 and _("%1 book") or _("%1 books"), books) end
+    count("author", _("%1 author"), _("%1 authors"))
+    count("series", _("%1 series"), _("%1 series"))
+    count("group", _("%1 row"), _("%1 rows"))
+    count("collection", _("%1 collection"), _("%1 collections"))
+    UIManager:show(Empty:new {
+        heading = _("Everything is hidden"),
+        text = _("You told Afterword not to suggest anything in your library."),
+        detail = table.concat(parts, " \u{00B7} "),
+        buttons = {
+            { text = _("Open Preferences"), solid = true, callback = function() self:showPreferences(reshow) end },
+            { text = _("Close"), callback = function() end },
+        },
+    })
+end
+
 -- The list of suggestions. Tapping a book opens it; pressing and holding one offers to stop suggesting it.
 -- `opts.title` names it; `opts.without` leaves out the groups that are about the book you are leaving; `opts.just_finished` says the
 -- open book has been finished, so its sequel is next in line although it may not be marked finished yet.
@@ -355,7 +398,7 @@ function Afterword:showPicker(info, on_open, opts)
         items[#items + 1] = { kind = "lists", columns = row }
     end
     if #items == 0 then
-        UIManager:show(require("ui/widget/infomessage"):new { text = _("Nothing to suggest yet.") })
+        self:showNothing(function() self:showPicker(info, on_open, opts) end)
         return
     end
     local menu

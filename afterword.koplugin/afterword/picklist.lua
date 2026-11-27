@@ -112,6 +112,16 @@ local function button(text, solid)
     }
 end
 
+-- A small pill with a few words: what a book needs a reader to know before choosing it ("Book 4 missing"). Solid black on the picks;
+-- `quiet` (white with a thin outline, like a pick's second button) on the lists below, where it should not shout.
+local function badge(text, size, quiet)
+    return FrameContainer:new {
+        background = quiet and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK, bordersize = quiet and Size.border.thin or 0, radius = s(10), margin = 0,
+        padding = s(1), padding_left = s(8), padding_right = s(8),
+        TextWidget:new { text = text, face = face(size or 11), bold = true, fgcolor = quiet and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE },
+    }
+end
+
 -- Text of at most `lines` lines: as tall as it needs, no taller, with an ellipsis when it was cut.
 local function capped_text(text, f, width, lines, bold, fgcolor)
     local widget = TextBoxWidget:new { text = text, face = f, width = width, bold = bold, fgcolor = fgcolor }
@@ -166,6 +176,8 @@ function PickRow:buildCard(card)
         if author ~= "" then list[#list + 1] = { TextWidget:new { text = author, face = face(13), max_width = text_w, truncate_with_ellipsis = true }, s(2) } end
         local series = with_series and Suggest.series_text(book)
         if series then list[#list + 1] = { TextWidget:new { text = series, face = face(11), fgcolor = GREY, max_width = text_w, truncate_with_ellipsis = true }, s(2) } end
+        local gap = Suggest.gap_text(book)
+        if gap then list[#list + 1] = { badge(gap, 11), s(5) } end
         if why_lines > 0 and card.why and card.why ~= "" then list[#list + 1] = { capped_text(card.why, face(12), text_w, why_lines), s(6) } end
         local h = 0
         for _i, p in ipairs(list) do h = h + p[1]:getSize().h + p[2] end
@@ -208,16 +220,35 @@ local function list_text(book, progress, d)
     col[#col + 1] = capped_text(book.title or "?", d.f_title, d.text_w, 2)
     local author = authors_of(book)
     if author ~= "" then col[#col + 1] = TextWidget:new { text = author, face = d.f_author, fgcolor = GREY, max_width = d.text_w, truncate_with_ellipsis = true } end
-    local meta = shelf_meta(book, progress)
-    if meta then col[#col + 1] = TextWidget:new { text = meta, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true } end
+    local gap = Suggest.gap_short(book)
+    local meta = shelf_meta(book, false) -- the percentage is not here: it goes by the bar
+    -- the badge goes on the line of "Book 8" (a book that skips ahead has a number), so it costs the row no height
+    local meta_widget = meta and TextWidget:new { text = meta, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true }
+    if gap then
+        local pill = badge(gap, 10, true)
+        local line = HorizontalGroup:new { align = "center" }
+        if meta_widget and meta_widget:getSize().w + s(6) + pill:getSize().w <= d.text_w then
+            line[#line + 1] = meta_widget
+            line[#line + 1] = HorizontalSpan:new { width = s(6) }
+        end
+        line[#line + 1] = pill
+        col[#col + 1] = line
+    elseif meta_widget then
+        col[#col + 1] = meta_widget
+    end
+    if book.note_line then col[#col + 1] = TextWidget:new { text = book.note_line, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true } end
     if progress then
         local percent = math.max(0, math.min(100, tonumber(book.percent) or 0))
-        col[#col + 1] = VerticalSpan:new { width = s(4) }
-        col[#col + 1] = OverlapGroup:new {
-            dimen = Geom:new { w = d.text_w, h = d.bar_h },
-            LineWidget:new { dimen = Geom:new { w = d.text_w, h = d.bar_h }, background = Blitbuffer.COLOR_GRAY_D },
-            LineWidget:new { dimen = Geom:new { w = math.max(1, math.floor(d.text_w * percent / 100)), h = d.bar_h }, background = Blitbuffer.COLOR_BLACK },
-        }
+        local function bar(w)
+            return OverlapGroup:new {
+                dimen = Geom:new { w = w, h = d.bar_h },
+                LineWidget:new { dimen = Geom:new { w = w, h = d.bar_h }, background = Blitbuffer.COLOR_GRAY_D },
+                LineWidget:new { dimen = Geom:new { w = math.max(1, math.floor(w * percent / 100)), h = d.bar_h }, background = Blitbuffer.COLOR_BLACK },
+            }
+        end
+        -- the percentage sits at the end of the bar (small, and close to the line above, so a row grows as little as it can)
+        local label = TextWidget:new { text = string.format("%d%%", percent), face = face(10), fgcolor = Blitbuffer.COLOR_GRAY_4 }
+        col[#col + 1] = HorizontalGroup:new { align = "center", bar(d.text_w - label:getSize().w - s(8)), HorizontalSpan:new { width = s(8) }, label }
     end
     return col
 end
@@ -229,7 +260,7 @@ function PickRow:buildLists()
         local col = VerticalGroup:new { align = "left" }
         col[#col + 1] = heading(column.heading, d, d.col_w)
         col[#col + 1] = VerticalSpan:new { width = s(8) }
-        for _j, book in ipairs(column.books) do
+        for j, book in ipairs(column.books) do
             local text = list_text(book, column.progress, d)
             local line = HorizontalGroup:new {
                 align = "top",
@@ -238,7 +269,7 @@ function PickRow:buildLists()
                 text,
             }
             col[#col + 1] = line
-            col[#col + 1] = VerticalSpan:new { width = math.max(0, entry.row_h - line:getSize().h) + d.row_gap }
+            col[#col + 1] = VerticalSpan:new { width = math.max(0, entry.row_hs[j] - line:getSize().h) + d.row_gap }
         end
         row[#row + 1] = col
         if i < #entry.columns then row[#row + 1] = HorizontalSpan:new { width = d.col_gap } end
@@ -257,7 +288,12 @@ function PickRow:bookAt(ges)
     end
     local column = entry.columns[math.floor(x / (d.col_w + d.col_gap)) + 1]
     local y = ges.pos.y - self.dimen.y - (entry.lead and d.lead_h or entry.at_top and 0 or d.section_gap) - d.head_h
-    return column and y >= 0 and column.books[math.floor(y / (entry.row_h + d.row_gap)) + 1] or nil, column
+    if not column or y < 0 then return nil, column end
+    for k, h in ipairs(entry.row_hs) do
+        if y < h + d.row_gap then return column.books[k], column end
+        y = y - h - d.row_gap
+    end
+    return nil, column
 end
 
 function PickRow:onTapSelect(arg, ges)
@@ -303,15 +339,16 @@ function PickMenu:layout(avail)
     self.dims = d
     local lead = (self.title and self.item_table[1]) and d.lead_h or 0 -- the heading's height, over the first row
     if self.item_table[1] then self.item_table[1].lead = self.title end
-    -- how tall a book's row in a list needs to be: the tallest of any list's (every row in the screen shares it, so the columns line up)
-    local row_h = d.thumb_h
+    -- how tall each row of a list needs to be: the tallest book in it, across the columns, so the columns line up. (A row with a
+    -- badge and a percentage is taller than the others, and only that row grows.)
     for _i, item in ipairs(self.item_table) do
         if item.kind == "lists" then
+            item.row_hs_all = {}
             for _j, column in ipairs(item.columns) do
                 column.all = column.all or column.books
-                for _k, book in ipairs(column.all) do
+                for k, book in ipairs(column.all) do
                     local text = list_text(book, column.progress, d)
-                    row_h = math.max(row_h, text:getSize().h)
+                    item.row_hs_all[k] = math.max(item.row_hs_all[k] or d.thumb_h, text:getSize().h)
                     text:free()
                 end
             end
@@ -324,9 +361,23 @@ function PickMenu:layout(avail)
         if item.kind == "lists" then blocks = blocks + 1 end
     end
     blocks = math.max(blocks, 1)
-    local fit = math.floor((avail - lead - (blocks + 1) * (d.section_gap + d.head_h) - pick_min - s(6) + blocks * d.row_gap)
-        / (blocks * (row_h + d.row_gap)))
-    local rows = math.max(2, fit)
+    local budget = avail - lead - (blocks + 1) * (d.section_gap + d.head_h) - pick_min - s(6) + blocks * d.row_gap
+    local most = 0
+    for _i, item in ipairs(self.item_table) do
+        if item.kind == "lists" then most = math.max(most, #item.row_hs_all) end
+    end
+    local rows = 0 -- as many rows as the room allows, each list counting its own rows' heights; two at least
+    for n = 1, most do
+        local used = 0
+        for _i, item in ipairs(self.item_table) do
+            if item.kind == "lists" then
+                for k = 1, math.min(n, #item.row_hs_all) do used = used + item.row_hs_all[k] + d.row_gap end
+            end
+        end
+        if used > budget then break end
+        rows = n
+    end
+    rows = math.max(2, rows)
     local first_lists
     for i, item in ipairs(self.item_table) do
         item.at_top = i == 1
@@ -337,8 +388,13 @@ function PickMenu:layout(avail)
                 for k = 1, math.min(rows, #column.all) do column.books[k] = column.all[k] end
                 count = math.max(count, #column.books)
             end
-            item.row_h = row_h
-            item.body_h = d.head_h + count * (row_h + d.row_gap) - d.row_gap
+            item.row_hs = {}
+            local body = d.head_h - d.row_gap
+            for k = 1, count do
+                item.row_hs[k] = item.row_hs_all[k]
+                body = body + item.row_hs[k] + d.row_gap
+            end
+            item.body_h = body
             first_lists = first_lists or item
         end
     end

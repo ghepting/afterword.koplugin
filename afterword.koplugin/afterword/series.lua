@@ -62,6 +62,25 @@ function Series.position(records, path)
     return { index = mine, last = last, series = me.series }
 end
 
+-- missing(records, path) -> the numbers of the books before this one in its series that are not in the library, as whole numbers
+-- (book 5 with 1, 2, 3 and 5 owned gives { 4 }; a lone book 3 gives { 1, 2 }); { } for a book that is first, complete so far, or not
+-- numbered. A novella (1.5) is not counted: only the whole numbers up to this one are expected.
+function Series.missing(records, path)
+    local me = find(records, path)
+    local mine = me and tonumber(me.series_index)
+    if not mine then return {} end
+    local owned = {}
+    for _i, r in ipairs(records) do
+        local n = tonumber(r.series_index)
+        if n and norm(r.series) == norm(me.series) then owned[math.floor(n)] = true end
+    end
+    local out = {}
+    for n = 1, math.ceil(mine) - 1 do
+        if not owned[n] then out[#out + 1] = n end
+    end
+    return out
+end
+
 -- eligible(records, status_of) -> function(path) -> true when the book may be suggested as something new: it is in no series, or
 -- every book of its series with a lower number is finished. So book 3 is not offered while book 2 is unread, half read or on hold;
 -- a gap in what you own is skipped. A book in a series but with no number cannot be placed, so it is never offered.
