@@ -112,6 +112,15 @@ local function button(text, solid)
     }
 end
 
+-- A small black pill with a few words in white: what a book needs a reader to know before choosing it ("Book 4 missing").
+local function badge(text, size)
+    return FrameContainer:new {
+        background = Blitbuffer.COLOR_BLACK, bordersize = 0, radius = s(10), margin = 0,
+        padding = s(2), padding_left = s(9), padding_right = s(9),
+        TextWidget:new { text = text, face = face(size or 11), bold = true, fgcolor = Blitbuffer.COLOR_WHITE },
+    }
+end
+
 -- Text of at most `lines` lines: as tall as it needs, no taller, with an ellipsis when it was cut.
 local function capped_text(text, f, width, lines, bold, fgcolor)
     local widget = TextBoxWidget:new { text = text, face = f, width = width, bold = bold, fgcolor = fgcolor }
@@ -166,6 +175,8 @@ function PickRow:buildCard(card)
         if author ~= "" then list[#list + 1] = { TextWidget:new { text = author, face = face(13), max_width = text_w, truncate_with_ellipsis = true }, s(2) } end
         local series = with_series and Suggest.series_text(book)
         if series then list[#list + 1] = { TextWidget:new { text = series, face = face(11), fgcolor = GREY, max_width = text_w, truncate_with_ellipsis = true }, s(2) } end
+        local gap = Suggest.gap_text(book)
+        if gap then list[#list + 1] = { badge(gap, 11), s(5) } end
         if why_lines > 0 and card.why and card.why ~= "" then list[#list + 1] = { capped_text(card.why, face(12), text_w, why_lines), s(6) } end
         local h = 0
         for _i, p in ipairs(list) do h = h + p[1]:getSize().h + p[2] end
@@ -210,6 +221,12 @@ local function list_text(book, progress, d)
     if author ~= "" then col[#col + 1] = TextWidget:new { text = author, face = d.f_author, fgcolor = GREY, max_width = d.text_w, truncate_with_ellipsis = true } end
     local meta = shelf_meta(book, progress)
     if meta then col[#col + 1] = TextWidget:new { text = meta, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true } end
+    if book.note_line then col[#col + 1] = TextWidget:new { text = book.note_line, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true } end
+    local gap = Suggest.gap_text(book)
+    if gap then
+        col[#col + 1] = VerticalSpan:new { width = s(3) }
+        col[#col + 1] = badge(gap, 10)
+    end
     if progress then
         local percent = math.max(0, math.min(100, tonumber(book.percent) or 0))
         col[#col + 1] = VerticalSpan:new { width = s(4) }

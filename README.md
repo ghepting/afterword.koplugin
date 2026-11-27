@@ -43,9 +43,15 @@ It is one screen, in portrait or landscape; the picks' covers take whatever heig
 
 **Nothing is suggested out of order in a series.** A book in a series is only offered as something new when every lower-numbered book of that series you own is finished, so book 3 never appears while book 2 is unread, half read or on hold (a gap in what you own is skipped). It applies to every group, your collection included, except "Keep reading", which is about books you already started. A series book with no number cannot be placed, so it is not offered.
 
+**A badge says when a book skips ahead.** If you own book 5 but not book 4, the book's card carries a small black badge: "Book 4 missing", or "3 books missing" when several before it are not in your library. It shows on the picks and in the lists, so you know before you start. A book you have already started never gets one.
+
+<p align="center">
+  <img src="assets/series-gap.png" width="400" alt="The list with a Next in the series pick, The Hallmarked Man, carrying a black badge reading 2 books missing">
+</p>
+
 **Picked for you** is worked out on the device from what KOReader already knows. A book you rated 4 or 5 counts for its genre tags, a 3 a little, a 1 or 2 against them; a book you finished without rating counts a little for them, and one you put on hold a little against. An unread book is scored by how many of its tags you have liked, with rare tags counting for more than ones nearly everything has, and books in a language you do not read are left out. It needs at least two books you liked before it will guess, and books with no tags are never offered. Nothing is sent anywhere.
 
-**A new device still gets picks.** With no history or ratings yet, Picked for you is the first book of a series you own (or your newest book) and says it is a good place to start, and Something different is a book with a tag few others in your library have (or by an author you have few books from). Both give way as soon as there is a taste to go on. If nothing is new, the books you put on hold appear under **On hold**.
+**A new device still gets picks.** With no history or ratings yet, Picked for you is the first book of a series you own (or your newest book) and says it is a good place to start, and Something different is a book with a tag few others in your library have (or by an author you have few books from). Both give way as soon as there is a taste to go on. If nothing is new, the books you put on hold appear under **On hold**, longest wait first, each with how long ago you put it down.
 
 The screenshots are from the KOReader desktop emulator, with reading numbers made up for the picture.
 
@@ -58,7 +64,7 @@ Not everything in your library is something you want suggested. **Press and hold
   <img src="assets/hide-undo.png" width="400" alt="The list after hiding a book, with a bar along the bottom reading Hidden, with an Undo button">
 </p>
 
-Everything you have hidden is in **Preferences**, from Tools › Afterword or by tapping the mark in the header: a row per kind with a count, each opening its own screen. Select any number and bring them back from the bar that floats at the bottom, which asks first.
+Everything you have hidden is in **Preferences**, from Tools › Afterword or by tapping the mark in the header: a row per kind with a count, each opening its own screen. Select any number and bring them back from the bar that floats at the bottom, which asks first. If everything in your library ends up hidden, the list says so and has an **Open Preferences** button, so there is always a way back.
 
 <p align="center">
   <img src="assets/prefs-overview.png" width="400" alt="Preferences: hidden books as a strip of covers, then snoozed books, authors, series, rows of the list and collections, each with a count">

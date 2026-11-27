@@ -88,4 +88,15 @@ T.test("eligible: a gap in what you own is skipped, and an unknown book is left 
     T.eq(ok("/nowhere"), true)
 end)
 
+T.test("missing: the whole numbers before a book that are not in the library", function()
+    local recs = { { path = "/1", series = "S", series_index = 1 }, { path = "/1b", series = "S", series_index = 1.5 },
+        { path = "/2", series = "s", series_index = 2 }, { path = "/5", series = "S", series_index = 5 }, { path = "/x", series = "Other", series_index = 1 } }
+    T.eq(table.concat(Series.missing(recs, "/5"), ","), "3,4")
+    T.eq(#Series.missing(recs, "/2"), 0)
+    T.eq(#Series.missing(recs, "/1"), 0)
+    T.eq(#Series.missing(recs, "/x"), 0)
+    T.eq(#Series.missing(recs, "/nowhere"), 0)
+    T.eq(table.concat(Series.missing({ { path = "/3", series = "S", series_index = 3 } }, "/3"), ","), "1,2") -- a series you start in the middle
+end)
+
 T.done()

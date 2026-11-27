@@ -314,6 +314,33 @@ T.test("the other groups explain themselves in the detail sheet only", function(
     T.eq(select(2, Suggest.explain("more_by_author", {}, {})), nil)
 end)
 
+T.test("a book that skips ahead in its series carries the numbers it skips, and says so in a badge", function()
+    local lib = { bk("/s1", "One", "A", "Strike", 1), bk("/s2", "Two", "A", "Strike", 2), bk("/s3", "Three", "A", "Strike", 3), bk("/s5", "Five", "A", "Strike", 5), bk("/s9", "Nine", "A", "Strike", 9) }
+    local g = find(Suggest.groups(ctx { current = "/s3", finished = "/s3", library = lib, rating_of = function() return 0 end,
+        status_of = function(p) return (p == "/s1" or p == "/s2") and "complete" or "new" end }), "series")
+    T.eq(g.books[1].path, "/s5")
+    T.eq(table.concat(g.books[1].missing, ","), "4")
+    T.eq(Suggest.gap_text(g.books[1]), "Book 4 missing")
+    T.eq(Suggest.gap_text({ missing = { 4, 5, 6 } }), "3 books missing")
+    T.eq(Suggest.gap_text({}), nil)
+end)
+
+T.test("a book you have started carries no badge, and On hold says how long ago it was put down", function()
+    local lib = { bk("/a", "A", "X", "S", 3), bk("/h", "Held", "Y") }
+    local st = { ["/a"] = "reading", ["/h"] = "abandoned" }
+    local now = 1000 * 86400
+    local groups = Suggest.groups(ctx { current = false, library = lib, history = {}, status_of = function(p) return st[p] or "new" end,
+        now = now, put_down_of = function(p) return p == "/h" and now - 130 * 86400 or nil end })
+    local started = find(groups, "started")
+    T.eq(started and started.books[1].missing, nil)
+    local held = find(groups, "on_hold")
+    T.eq(held.books[1].note_line, "4 months ago")
+    T.eq(Suggest.put_down_text(now - 400 * 86400, now), "A year ago")
+    T.eq(Suggest.put_down_text(now - 3 * 86400, now), "3 days ago")
+    T.eq(Suggest.put_down_text(nil, now), nil)
+end)
+
+
 T.done()
 
 T.test("a new device with no taste yet still gets two picks: the start of a series, and something unlike the rest", function()
