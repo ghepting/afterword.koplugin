@@ -116,7 +116,7 @@ end
 local function badge(text, size)
     return FrameContainer:new {
         background = Blitbuffer.COLOR_BLACK, bordersize = 0, radius = s(10), margin = 0,
-        padding = s(2), padding_left = s(9), padding_right = s(9),
+        padding = s(1), padding_left = s(8), padding_right = s(8),
         TextWidget:new { text = text, face = face(size or 11), bold = true, fgcolor = Blitbuffer.COLOR_WHITE },
     }
 end
@@ -220,13 +220,22 @@ local function list_text(book, progress, d)
     local author = authors_of(book)
     if author ~= "" then col[#col + 1] = TextWidget:new { text = author, face = d.f_author, fgcolor = GREY, max_width = d.text_w, truncate_with_ellipsis = true } end
     local meta = shelf_meta(book, progress)
-    if meta then col[#col + 1] = TextWidget:new { text = meta, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true } end
-    if book.note_line then col[#col + 1] = TextWidget:new { text = book.note_line, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true } end
-    local gap = Suggest.gap_text(book)
+    -- the badge goes on the line of "Book 8" (a book that skips ahead has a number), so it costs the row no height
+    local gap = Suggest.gap_short(book)
+    local meta_widget = meta and TextWidget:new { text = meta, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true }
     if gap then
-        col[#col + 1] = VerticalSpan:new { width = s(3) }
-        col[#col + 1] = badge(gap, 10)
+        local pill = badge(gap, 10)
+        local line = HorizontalGroup:new { align = "center" }
+        if meta_widget and meta_widget:getSize().w + s(6) + pill:getSize().w <= d.text_w then
+            line[#line + 1] = meta_widget
+            line[#line + 1] = HorizontalSpan:new { width = s(6) }
+        end
+        line[#line + 1] = pill
+        col[#col + 1] = line
+    elseif meta_widget then
+        col[#col + 1] = meta_widget
     end
+    if book.note_line then col[#col + 1] = TextWidget:new { text = book.note_line, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true } end
     if progress then
         local percent = math.max(0, math.min(100, tonumber(book.percent) or 0))
         col[#col + 1] = VerticalSpan:new { width = s(4) }

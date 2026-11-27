@@ -323,6 +323,8 @@ T.test("a book that skips ahead in its series carries the numbers it skips, and 
     T.eq(Suggest.gap_text(g.books[1]), "Book 4 missing")
     T.eq(Suggest.gap_text({ missing = { 4, 5, 6 } }), "3 books missing")
     T.eq(Suggest.gap_text({}), nil)
+    T.eq(Suggest.gap_short({ missing = { 4, 5, 6 } }), "3 missing")
+    T.eq(Suggest.gap_short({}), nil)
 end)
 
 T.test("a book you have started carries no badge, and On hold says how long ago it was put down", function()

@@ -62,6 +62,12 @@ function Suggest.gap_text(book)
     return T(_("%1 books missing"), n)
 end
 
+-- The same in fewer words, for the narrow list columns: "1 missing", "3 missing"; nil for none.
+function Suggest.gap_short(book)
+    local n = book and book.missing and #book.missing or 0
+    return n > 0 and T(_("%1 missing"), n) or nil
+end
+
 -- "4 months ago", from a time and now (the On hold heading above it says what it is the time of); nil when the time is not known.
 function Suggest.put_down_text(put_down, now)
     put_down = tonumber(put_down)
