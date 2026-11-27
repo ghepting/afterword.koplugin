@@ -43,7 +43,7 @@ It is one screen, in portrait or landscape; the picks' covers take whatever heig
 
 **Nothing is suggested out of order in a series.** A book in a series is only offered as something new when every lower-numbered book of that series you own is finished, so book 3 never appears while book 2 is unread, half read or on hold (a gap in what you own is skipped). It applies to every group, your collection included, except "Keep reading", which is about books you already started. A series book with no number cannot be placed, so it is not offered.
 
-**A badge says when a book skips ahead.** If you own book 5 but not book 4, the book's card carries a small black badge: "Book 4 missing", or "3 books missing" when several before it are not in your library. It shows on the picks and, shorter ("2 missing"), beside "Book 8" in the lists, so you know before you choose. On the lists it is a quieter, outlined pill, and on a book you are reading the percentage moves down to the end of the progress bar to make room.
+**A badge says when a book skips ahead.** If you own book 5 but not book 4, the book's card carries a small black badge: "Book 4 missing", or "3 books missing" when several before it are not in your library. It shows on the picks and, shorter ("2 missing"), beside "Book 8" in the lists, so you know before you choose. On the lists it is a quieter, outlined pill, and a book you are reading shows its percentage at the end of its progress bar.
 
 <p align="center">
   <img src="assets/series-gap.png" width="400" alt="The list with a Next in the series pick, The Hallmarked Man, carrying a black badge reading 2 books missing">

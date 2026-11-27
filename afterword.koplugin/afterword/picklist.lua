@@ -221,7 +221,7 @@ local function list_text(book, progress, d)
     local author = authors_of(book)
     if author ~= "" then col[#col + 1] = TextWidget:new { text = author, face = d.f_author, fgcolor = GREY, max_width = d.text_w, truncate_with_ellipsis = true } end
     local gap = Suggest.gap_short(book)
-    local meta = shelf_meta(book, progress and not gap) -- with a badge there is no room for the percentage: it goes by the bar
+    local meta = shelf_meta(book, false) -- the percentage is not here: it goes by the bar
     -- the badge goes on the line of "Book 8" (a book that skips ahead has a number), so it costs the row no height
     local meta_widget = meta and TextWidget:new { text = meta, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true }
     if gap then
@@ -246,15 +246,9 @@ local function list_text(book, progress, d)
                 LineWidget:new { dimen = Geom:new { w = math.max(1, math.floor(w * percent / 100)), h = d.bar_h }, background = Blitbuffer.COLOR_BLACK },
             }
         end
-        if gap then
-            -- the badge took the percentage's place beside "Book 8": it moves down to the end of the bar (small, and close to the
-            -- line above, so the row grows as little as it can: every row in the screen is as tall as the tallest)
-            local label = TextWidget:new { text = string.format("%d%%", percent), face = face(10), fgcolor = Blitbuffer.COLOR_GRAY_4 }
-            col[#col + 1] = HorizontalGroup:new { align = "center", bar(d.text_w - label:getSize().w - s(8)), HorizontalSpan:new { width = s(8) }, label }
-        else
-            col[#col + 1] = VerticalSpan:new { width = s(4) }
-            col[#col + 1] = bar(d.text_w)
-        end
+        -- the percentage sits at the end of the bar (small, and close to the line above, so a row grows as little as it can)
+        local label = TextWidget:new { text = string.format("%d%%", percent), face = face(10), fgcolor = Blitbuffer.COLOR_GRAY_4 }
+        col[#col + 1] = HorizontalGroup:new { align = "center", bar(d.text_w - label:getSize().w - s(8)), HorizontalSpan:new { width = s(8) }, label }
     end
     return col
 end
