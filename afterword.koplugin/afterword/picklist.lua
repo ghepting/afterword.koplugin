@@ -112,12 +112,13 @@ local function button(text, solid)
     }
 end
 
--- A small black pill with a few words in white: what a book needs a reader to know before choosing it ("Book 4 missing").
-local function badge(text, size)
+-- A small pill with a few words: what a book needs a reader to know before choosing it ("Book 4 missing"). Solid black on the picks;
+-- `quiet` (white with a thin outline, like a pick's second button) on the lists below, where it should not shout.
+local function badge(text, size, quiet)
     return FrameContainer:new {
-        background = Blitbuffer.COLOR_BLACK, bordersize = 0, radius = s(10), margin = 0,
+        background = quiet and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK, bordersize = quiet and Size.border.thin or 0, radius = s(10), margin = 0,
         padding = s(1), padding_left = s(8), padding_right = s(8),
-        TextWidget:new { text = text, face = face(size or 11), bold = true, fgcolor = Blitbuffer.COLOR_WHITE },
+        TextWidget:new { text = text, face = face(size or 11), bold = true, fgcolor = quiet and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_WHITE },
     }
 end
 
@@ -219,12 +220,12 @@ local function list_text(book, progress, d)
     col[#col + 1] = capped_text(book.title or "?", d.f_title, d.text_w, 2)
     local author = authors_of(book)
     if author ~= "" then col[#col + 1] = TextWidget:new { text = author, face = d.f_author, fgcolor = GREY, max_width = d.text_w, truncate_with_ellipsis = true } end
-    local meta = shelf_meta(book, progress)
-    -- the badge goes on the line of "Book 8" (a book that skips ahead has a number), so it costs the row no height
     local gap = Suggest.gap_short(book)
+    local meta = shelf_meta(book, progress and not gap) -- with a badge there is no room for the percentage: the bar shows it
+    -- the badge goes on the line of "Book 8" (a book that skips ahead has a number), so it costs the row no height
     local meta_widget = meta and TextWidget:new { text = meta, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true }
     if gap then
-        local pill = badge(gap, 10)
+        local pill = badge(gap, 10, true)
         local line = HorizontalGroup:new { align = "center" }
         if meta_widget and meta_widget:getSize().w + s(6) + pill:getSize().w <= d.text_w then
             line[#line + 1] = meta_widget

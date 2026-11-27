@@ -189,9 +189,9 @@ function Suggest.groups(ctx)
             series = record and record.series, series_index = record and record.series_index, authors = record and record.authors,
             tags = tags, language = record and record.language, description = record and record.description,
         }
-        if not resume then
+        if not resume or (extra and extra.percent) then -- not the On hold row: those were put down long ago
             local gaps = Series.missing(ctx.library or {}, path)
-            if #gaps > 0 then book.missing = gaps end -- a book you already started is past this
+            if #gaps > 0 then book.missing = gaps end
         end
         for key, value in pairs(extra or {}) do book[key] = value end
         group[#group + 1] = book

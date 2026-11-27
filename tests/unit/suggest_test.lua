@@ -327,14 +327,14 @@ T.test("a book that skips ahead in its series carries the numbers it skips, and 
     T.eq(Suggest.gap_short({}), nil)
 end)
 
-T.test("a book you have started carries no badge, and On hold says how long ago it was put down", function()
+T.test("a book you have started carries a badge too, and On hold says how long ago it was put down", function()
     local lib = { bk("/a", "A", "X", "S", 3), bk("/h", "Held", "Y") }
     local st = { ["/a"] = "reading", ["/h"] = "abandoned" }
     local now = 1000 * 86400
     local groups = Suggest.groups(ctx { current = false, library = lib, history = {}, status_of = function(p) return st[p] or "new" end,
         now = now, put_down_of = function(p) return p == "/h" and now - 130 * 86400 or nil end })
     local started = find(groups, "started")
-    T.eq(started and started.books[1].missing, nil)
+    T.eq(table.concat(started.books[1].missing, ","), "1,2")
     local held = find(groups, "on_hold")
     T.eq(held.books[1].note_line, "4 months ago")
     T.eq(Suggest.put_down_text(now - 400 * 86400, now), "A year ago")
