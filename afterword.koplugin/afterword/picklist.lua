@@ -66,8 +66,11 @@ local function dims(width)
 end
 
 -- The cover of a book, in a box about w by h: the picture from KOReader's cache, or a plain box with the title when it has none.
-local function cover(path, title, w, h)
-    if not path then -- a book of a want-to-read list that is not on the device: an empty frame, there is nothing to show
+local function cover(path, title, w, h, file)
+    if not path then -- a book of a want-to-read list that is not on the device: its cover when Hardcover's was fetched, else an empty frame
+        local image
+        if file then pcall(function() image = ImageWidget:new { file = file, width = w, height = h, scale_factor = 0 } end) end
+        if image then return FrameContainer:new { bordersize = Size.border.thin, padding = 0, margin = 0, image } end
         return FrameContainer:new {
             background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.thin, padding = 0, margin = 0,
             CenterContainer:new { dimen = Geom:new { w = w, h = h },
@@ -172,7 +175,7 @@ end
 function PickRow:buildCard(card)
     local d = self.d
     local book = card.book
-    local image = cover(book.path, book.title, d.pick_w, d.pick_h)
+    local image = cover(book.path, book.title, d.pick_w, d.pick_h, book.cover_file)
     local text_w = d.card_w - image:getSize().w - d.thumb_gap - s(18) -- and a margin on the right, so a button is not nearer the next cover than its own
     local btn = button(card.button or _("Start reading"), card.solid)
     local room = d.pick_h - btn:getSize().h - s(6)
@@ -290,7 +293,7 @@ function PickRow:buildLists()
             local text = list_text(book, column.progress, d)
             local line = HorizontalGroup:new {
                 align = "top",
-                cover(book.path, book.title, d.thumb_w, d.thumb_h),
+                cover(book.path, book.title, d.thumb_w, d.thumb_h, book.cover_file),
                 HorizontalSpan:new { width = d.thumb_gap },
                 text,
             }

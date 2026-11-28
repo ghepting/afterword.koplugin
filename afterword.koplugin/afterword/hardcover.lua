@@ -16,9 +16,19 @@ local Hardcover = {
 local _ = require("gettext")
 local T = require("ffi/util").template
 
--- The user's books on the Want to read shelf (status 1), newest first.
-Hardcover.QUERY = "query { me { user_books(where: {status_id: {_eq: 1}}, order_by: {date_added: desc}, limit: 500) "
-    .. "{ book { title contributions { author { name } } book_series { position series { name } } } } } }"
+-- The user's books on the Want to read shelf (status 1), newest first. With the cover's address first; Hardcover's answer to a field it does
+-- not know is an error, so a sync that fails on it is asked again without (see Hardcover.fetch).
+local function query(image)
+    return "query { me { user_books(where: {status_id: {_eq: 1}}, order_by: {date_added: desc}, limit: 500) "
+        .. "{ book { title " .. (image and "image { url } " or "") .. "contributions { author { name } } book_series { position series { name } } } } } }"
+end
+Hardcover.QUERY = query(false)
+Hardcover.QUERY_WITH_IMAGES = query(true)
+
+-- A cover is fetched only from Hardcover's own hosts, over https: the address comes from an answer, not from the person.
+function Hardcover.safe_cover_url(url)
+    return type(url) == "string" and url:match("^https://[%w%.%-]*hardcover%.app/") ~= nil
+end
 
 function Hardcover.path()
     return require("datastorage"):getSettingsDir() .. "/" .. Hardcover.FILE
@@ -102,8 +112,10 @@ function Hardcover.books_from(answer)
             local author = contribution and contribution.author and contribution.author.name
             local membership = first(book.book_series)
             local series = membership and membership.series and membership.series.name
+            local image = type(book.image) == "table" and book.image.url or nil
             books[#books + 1] = {
                 title = book.title, author = type(author) == "string" and author or "",
+                cover_url = Hardcover.safe_cover_url(image) and image or nil,
                 series = type(series) == "string" and series ~= "" and series or nil,
                 series_index = series and tonumber(membership.position) or nil,
             }
@@ -112,16 +124,25 @@ function Hardcover.books_from(answer)
     return { source = "hardcover", books = books }
 end
 
+local function ask(token, io, text)
+    local body = io.encode { query = text }
+    local status, answer = io.post(Hardcover.URL, { ["Content-Type"] = "application/json", Authorization = "Bearer " .. token }, body)
+    if status == 401 or status == 403 then return nil, "token" end
+    if status ~= 200 then return nil, "network", tostring(status or "no answer") end
+    local ok, decoded = pcall(io.decode, answer)
+    if not ok then return nil, "answer" end
+    return Hardcover.books_from(decoded)
+end
+
 function Hardcover.fetch(token, io)
     token = clean(token)
     if not token then return nil, "token" end
-    local body = io.encode { query = Hardcover.QUERY }
-    local status, text = io.post(Hardcover.URL, { ["Content-Type"] = "application/json", Authorization = "Bearer " .. token }, body)
-    if status == 401 or status == 403 then return nil, "token" end
-    if status ~= 200 then return nil, "network", tostring(status or "no answer") end
-    local ok, answer = pcall(io.decode, text)
-    if not ok then return nil, "answer" end
-    return Hardcover.books_from(answer)
+    local list, kind, detail = ask(token, io, Hardcover.QUERY_WITH_IMAGES)
+    if not list and kind == "api" then -- no cover field here: the shelf without covers is still the shelf
+        list, kind, detail = ask(token, io, Hardcover.QUERY)
+        if list then list.covers_unavailable = true end
+    end
+    return list, kind, detail
 end
 
 -- The real network: KOReader's socket.http and json. Blocks for up to the timeouts.
@@ -145,6 +166,69 @@ function Hardcover.fetch_now(token)
             return code, table.concat(chunks)
         end,
     })
+end
+
+Hardcover.MAX_COVERS = 60 -- fetched in one sync
+
+-- Fetches the covers of `list` that are not in `dir` yet: io.exists(path), io.get(url) -> status, bytes, and io.write(path, bytes) -> true.
+-- Returns how many were fetched. A cover that cannot be had is skipped; the book still shows, with an empty frame.
+function Hardcover.fetch_covers(list, dir, io)
+    local Wanted = require("afterword/wanted")
+    local got = 0
+    for _i, book in ipairs(list.books) do
+        if got >= Hardcover.MAX_COVERS then break end
+        if Hardcover.safe_cover_url(book.cover_url) then
+            local path = dir .. "/" .. Wanted.cover_name(book)
+            if not io.exists(path) then
+                local status, bytes = io.get(book.cover_url)
+                if status == 200 and type(bytes) == "string" and #bytes > 0 and #bytes < 3000000 and io.write(path, bytes) then got = got + 1 end
+            end
+        end
+    end
+    return got
+end
+
+function Hardcover.cover_dir()
+    return require("datastorage"):getDataDir() .. "/cache/afterword/covers"
+end
+
+-- The real thing: makes the folder, fetches with socket.http. Blocks for up to the timeouts, a cover at a time.
+function Hardcover.fetch_covers_now(list)
+    local lfs = require("libs/libkoreader-lfs")
+    local dir = Hardcover.cover_dir()
+    local base = require("datastorage"):getDataDir() .. "/cache"
+    lfs.mkdir(base); lfs.mkdir(base .. "/afterword"); lfs.mkdir(dir)
+    return Hardcover.fetch_covers(list, dir, {
+        exists = function(path) return lfs.attributes(path, "mode") == "file" end,
+        get = function(url)
+            local http = require("socket.http")
+            local ltn12 = require("ltn12")
+            local socket = require("socket")
+            local socketutil = require("socketutil")
+            local chunks = {}
+            socketutil:set_timeout(10, 30)
+            local code = socket.skip(1, http.request { url = url, method = "GET", sink = ltn12.sink.table(chunks) })
+            socketutil:reset_timeout()
+            return type(code) == "number" and code or nil, table.concat(chunks)
+        end,
+        write = function(path, bytes)
+            local handle = io.open(path, "wb")
+            if not handle then return false end
+            handle:write(bytes)
+            handle:close()
+            return true
+        end,
+    })
+end
+
+-- Deletes the covers kept for Hardcover's list (when it is disconnected).
+function Hardcover.forget_covers()
+    local lfs = require("libs/libkoreader-lfs")
+    local dir = Hardcover.cover_dir()
+    if lfs.attributes(dir, "mode") ~= "directory" then return end
+    for name in lfs.dir(dir) do
+        if name:match("%.jpg$") then os.remove(dir .. "/" .. name) end
+    end
 end
 
 function Hardcover.explain(kind, detail)

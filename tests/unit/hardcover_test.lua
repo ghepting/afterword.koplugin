@@ -113,3 +113,51 @@ T.test("a refused token, no answer and an unreadable answer are told apart, and 
         T.eq(Hardcover.explain(kind, "x"):find("sekret", 1, true), nil)
     end
 end)
+
+T.test("a cover address in the answer is kept only when it is an https address on a Hardcover host", function()
+    local function answer(url)
+        return { data = { me = { { user_books = { { book = { title = "A", image = { url = url }, contributions = {}, book_series = {} } } } } } } }
+    end
+    T.eq(Hardcover.books_from(answer("https://assets.hardcover.app/books/1/cover.jpg")).books[1].cover_url, "https://assets.hardcover.app/books/1/cover.jpg")
+    T.eq(Hardcover.books_from(answer("http://assets.hardcover.app/x.jpg")).books[1].cover_url, nil)
+    T.eq(Hardcover.books_from(answer("https://evil.example.com/hardcover.app/x.jpg")).books[1].cover_url, nil)
+    T.eq(Hardcover.books_from(answer("https://hardcover.app.evil.com/x.jpg")).books[1].cover_url, nil)
+end)
+T.test("a field Hardcover does not know is retried without covers, and a refused token is not retried", function()
+    local asked = {}
+    local function io_for(fn)
+        return { encode = function(v) return v.query end, decode = function(t) return t end,
+            post = function(url, headers, body) asked[#asked + 1] = body; return fn(body) end }
+    end
+    local with_images = Hardcover.fetch("tok", io_for(function(body)
+        if body:find("image", 1, true) then return 200, { errors = { { message = "field 'image' not found in type: 'books'" } } } end
+        return 200, ANSWER
+    end))
+    T.eq(#with_images.books, 2)
+    T.eq(with_images.covers_unavailable, true) -- said, so the empty frames are not a mystery
+    T.eq(#asked, 2)
+    asked = {}
+    local _l, kind = Hardcover.fetch("tok", io_for(function() return 401, "" end))
+    T.eq(kind, "token")
+    T.eq(#asked, 1)
+end)
+T.test("covers are fetched once each, never twice, only from safe addresses, and not more than the limit", function()
+    local list = { books = {
+        { title = "One", author = "A B", cover_url = "https://assets.hardcover.app/1.jpg" },
+        { title = "Two", author = "C D", cover_url = "https://assets.hardcover.app/2.jpg" },
+        { title = "Three", author = "E F", cover_url = "http://elsewhere.example.com/3.jpg" },
+        { title = "Four", author = "G H" },
+    } }
+    local have, fetched = {}, {}
+    local io = {
+        exists = function(path) return have[path] end,
+        get = function(url) fetched[#fetched + 1] = url; return 200, "JPEGDATA" end,
+        write = function(path, bytes) have[path] = bytes; return true end,
+    }
+    T.eq(Hardcover.fetch_covers(list, "/dir", io), 2)
+    T.eq(#fetched, 2)
+    T.eq(Hardcover.fetch_covers(list, "/dir", io), 0) -- already there
+    T.eq(#fetched, 2)
+    local Wanted = require("afterword/wanted")
+    T.eq(have["/dir/" .. Wanted.cover_name(list.books[1])], "JPEGDATA")
+end)

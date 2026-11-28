@@ -236,7 +236,14 @@ function Afterword:suggestions(file, without, just_finished)
     if #merged.books > 0 then
         local owned, missing = Wanted.match(merged, library)
         wanted = owned
-        if Wanted.show_unowned(G_reader_settings) then unowned = missing end
+        if Wanted.show_unowned(G_reader_settings) then
+            unowned = missing
+            local dir = require("afterword/hardcover").cover_dir() -- a cover fetched when Hardcover was synced, found by the book's name
+            for _i, w in ipairs(unowned) do
+                local file = dir .. "/" .. Wanted.cover_name(w)
+                if lfs.attributes(file, "mode") == "file" then w.cover_file = file end
+            end
+        end
     end
     return Suggest.groups {
         wanted = wanted, boost = Wanted.boost(G_reader_settings), unowned = unowned,

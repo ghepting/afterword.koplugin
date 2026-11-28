@@ -263,7 +263,7 @@ local function build(entry, w, state)
         return row
     elseif k == "listing" then
         local parts = HorizontalGroup:new { align = "center", HorizontalSpan:new { width = pad } }
-        parts[#parts + 1] = H.cover(entry.cover, entry.text, s(40), s(60)) -- no cover for a book that is not on the device: an empty frame
+        parts[#parts + 1] = H.cover(entry.cover, entry.text, s(40), s(60), entry.cover_file) -- a book that is not on the device has Hardcover's cover, or an empty frame
         parts[#parts + 1] = HorizontalSpan:new { width = s(14) }
         local text_w = inner - s(54) - s(110)
         local col = VerticalGroup:new { align = "left", text(entry.text, 16, true, BLACK, text_w) }
@@ -708,6 +708,12 @@ local function ago(time)
     return said and said:lower() or nil
 end
 
+-- The picture of a book's cover kept on the device (fetched when Hardcover was synced), or nil.
+local function cover_file_of(book)
+    local file = Hardcover.cover_dir() .. "/" .. Wanted.cover_name(book)
+    return require("libs/libkoreader-lfs").attributes(file, "mode") == "file" and file or nil
+end
+
 local function count_of(set)
     local n = 0
     for _key in pairs(set) do n = n + 1 end
@@ -819,7 +825,7 @@ local function browse_screen(initial)
                 local path = path_of[book]
                 local marks = {}
                 for _k, source in ipairs(book.sources or { state.tab }) do marks[#marks + 1] = source_mark(source) end
-                rows[#rows + 1] = { kind = "listing", text = book.title, sub = about_line(book), cover = path, marks = table.concat(marks, " "),
+                rows[#rows + 1] = { kind = "listing", text = book.title, sub = about_line(book), cover = path, cover_file = (not path) and cover_file_of(book) or nil, marks = table.concat(marks, " "),
                     status = path and _("On this device") or _("not on device"),
                     on_tap = path and function()
                         if Prefs.open_book then Prefs.close_all(true); Prefs.open_book(path) end
@@ -868,6 +874,7 @@ function Prefs.sync_hardcover(menu, forget_if_refused)
         UIManager:show(busy)
         UIManager:forceRePaint()
         local ok, list, kind, detail = pcall(Hardcover.fetch_now, token)
+        if ok and list then pcall(Hardcover.fetch_covers_now, list) end -- the covers come with the shelf; one that fails is just an empty frame
         UIManager:close(busy)
         if not ok then list, kind, detail = nil, "network", "error" end
         if not list then
@@ -878,7 +885,9 @@ function Prefs.sync_hardcover(menu, forget_if_refused)
         end
         Wanted.save(G_reader_settings, list, os.time())
         if menu then menu:rebuild() end
-        UIManager:show(InfoMessage:new { text = T(_("Synced %1 from Hardcover."), plural(#list.books, _("%1 book"), _("%1 books"))), timeout = 3 })
+        local said = T(_("Synced %1 from Hardcover."), plural(#list.books, _("%1 book"), _("%1 books")))
+        if list.covers_unavailable then said = said .. "\n\n" .. _("Hardcover would not give the covers, so books you do not have show an empty frame.") end
+        UIManager:show(InfoMessage:new { text = said, timeout = list.covers_unavailable and 6 or 3 })
     end)
 end
 
@@ -890,6 +899,7 @@ function Prefs.disconnect_hardcover(state, from_browse)
         ok_text = _("Disconnect"),
         ok_callback = function()
             Hardcover.forget(Hardcover.path())
+            pcall(Hardcover.forget_covers)
             Wanted.forget(G_reader_settings, "hardcover")
             state.tab = "all"
             if from_browse and #Wanted.lists(G_reader_settings) == 0 then

@@ -139,6 +139,19 @@ function Wanted.match(wanted, library)
     return owned, missing
 end
 
+-- The name a book's cover is kept under on the device (a list's books carry no id): its title as the matching sees it, and a short number
+-- from that title and its author, so two books never share a file.
+local function hash(text)
+    local h = 5381
+    for i = 1, #text do h = (h * 33 + text:byte(i)) % 4294967296 end
+    return string.format("%08x", h)
+end
+function Wanted.cover_name(book)
+    local key = Wanted.title_key(book.title)
+    local slug = key:gsub("%s+", "-"):sub(1, 40)
+    return (slug ~= "" and slug or "book") .. "-" .. hash(key .. "|" .. Wanted.surname(book.author)) .. ".jpg"
+end
+
 -- What is kept in KOReader's settings (`settings` is G_reader_settings, or any object with readSetting / saveSetting / delSetting).
 -- One list per source ("goodreads", "storygraph", "hardcover", "csv"): importing a source again replaces only its own list.
 local LISTS, BOOST, SHOW = "afterword_wanted", "afterword_wanted_boost", "afterword_wanted_show_unowned"
@@ -182,8 +195,9 @@ function Wanted.merged(settings)
             local at = seen[key]
             if at then
                 table.insert(books[at].sources, list.source)
+                books[at].cover_url = books[at].cover_url or b.cover_url
             else
-                books[#books + 1] = { title = b.title, author = b.author, series = b.series, series_index = b.series_index, sources = { list.source } }
+                books[#books + 1] = { title = b.title, author = b.author, series = b.series, series_index = b.series_index, cover_url = b.cover_url, sources = { list.source } }
                 seen[key] = #books
             end
         end
