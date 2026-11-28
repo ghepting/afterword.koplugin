@@ -940,7 +940,7 @@ local function hardcover_screen()
             for _i, line in ipairs({
                 _("Hardcover can share your want-to-read shelf with Afterword."),
                 _("1. On hardcover.app/account/api, choose New API Key."),
-                _("2. Under Permissions, select read:library, read:me and read:catalog."),
+                _("2. Under Permissions, select read:library, read:catalog and read:me:content."),
                 _("3. Create the key, copy it (it is shown once) and paste it here."),
             }) do rows[#rows + 1] = { kind = "note", text = line, height = 36, rule = false } end
             rows[#rows + 1] = { kind = "filter", text = _("Paste your token\u{2026}"), on_tap = function() Prefs.ask_token(state) end }

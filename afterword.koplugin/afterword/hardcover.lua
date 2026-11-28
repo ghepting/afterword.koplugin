@@ -148,7 +148,7 @@ function Hardcover.fetch_now(token)
 end
 
 function Hardcover.explain(kind, detail)
-    if kind == "token" then return _("Hardcover did not accept the token. Check that it was copied whole and has the permissions read:library, read:me and read:catalog.") end
+    if kind == "token" then return _("Hardcover did not accept the token. Check that it was copied whole and has the permissions read:library, read:catalog and read:me:content.") end
     if kind == "network" then return T(_("Could not reach Hardcover (%1). Check the connection and try again."), detail or "?") end
     if kind == "api" then return T(_("Hardcover reported a problem: %1"), detail or "?") end
     return _("Hardcover's answer was not what Afterword expected.")
