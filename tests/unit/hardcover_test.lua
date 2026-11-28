@@ -36,6 +36,20 @@ T.test("forgetting the token removes the file when nothing else is in it, and ke
     T.eq(text:find("keep", 1, true) ~= nil, true)
 end)
 
+T.test("a pasted token is kept, cleaned, beside whatever else the file holds, and an empty one is refused", function()
+    local path = tmp('return { other = "keep" }')
+    T.eq(Hardcover.write_token(path, "  Bearer abc.def\n"), true)
+    T.eq(Hardcover.read_token(path), "abc.def")
+    local f = io.open(path); local text = f:read("*a"); f:close()
+    T.eq(text:find("keep", 1, true) ~= nil, true)
+    T.eq(Hardcover.write_token(path, "   "), nil)
+    T.eq(Hardcover.read_token(path), "abc.def")
+    local fresh = os.tmpname(); os.remove(fresh)
+    T.eq(Hardcover.write_token(fresh, "tok"), true)
+    T.eq(Hardcover.read_token(fresh), "tok")
+    T.eq(Hardcover.write_token("/nonexistent-dir/x.lua", "tok"), nil)
+end)
+
 local ANSWER = { data = { me = { { user_books = {
     { book = { title = "The Will of the Many", contributions = { { author = { name = "James Islington" } } }, book_series = { { position = 1, series = { name = "Hierarchy" } } } } },
     { book = { title = "Project Hail Mary", contributions = { { author = { name = "Andy Weir" } } }, book_series = {} } },

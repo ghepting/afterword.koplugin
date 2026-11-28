@@ -857,7 +857,7 @@ local function browse_screen(initial)
 end
 
 -- Asks Hardcover for the want-to-read shelf and keeps it as its own list. Only when a token is in the sources file; says what happened.
-function Prefs.sync_hardcover(menu)
+function Prefs.sync_hardcover(menu, forget_if_refused)
     local token = Hardcover.read_token(Hardcover.path())
     if not token then
         UIManager:show(InfoMessage:new { text = Hardcover.explain("token") })
@@ -871,6 +871,8 @@ function Prefs.sync_hardcover(menu)
         UIManager:close(busy)
         if not ok then list, kind, detail = nil, "network", "error" end
         if not list then
+            if kind == "token" and forget_if_refused then Hardcover.forget(Hardcover.path()) end -- a token just pasted in that Hardcover refused is not kept
+            if menu then menu:rebuild() end
             UIManager:show(InfoMessage:new { text = Hardcover.explain(kind, detail) })
             return
         end
@@ -899,6 +901,30 @@ function Prefs.disconnect_hardcover(state, from_browse)
     })
 end
 
+-- A field to paste the token into, hidden as it is typed. Saving it tries it at once, and a token Hardcover refuses is not kept.
+function Prefs.ask_token(state)
+    local InputDialog = require("ui/widget/inputdialog")
+    local dialog
+    dialog = InputDialog:new {
+        title = _("Hardcover token"), input = "", input_hint = _("Paste your token"), text_type = "password",
+        buttons = { {
+            { text = _("Cancel"), callback = function() UIManager:close(dialog) end },
+            { text = _("Save"), is_enter_default = true, callback = function()
+                local token = dialog:getInputText()
+                UIManager:close(dialog)
+                if not Hardcover.write_token(Hardcover.path(), token) then
+                    UIManager:show(InfoMessage:new { text = _("Nothing was saved. Paste the token and select Save.") })
+                    return
+                end
+                state.menu:rebuild()
+                Prefs.sync_hardcover(state.menu, true)
+            end },
+        } },
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+
 local function hardcover_list()
     for _i, list in ipairs(Wanted.lists(G_reader_settings)) do
         if list.source == "hardcover" then return list end
@@ -913,13 +939,10 @@ local function hardcover_screen()
         if not token then
             for _i, line in ipairs({
                 _("Hardcover can share your want-to-read shelf with Afterword."),
-                _("1. Copy your API token from hardcover.app/account/api."),
-                _("2. Save it on this device, in koreader/settings/afterword_sources.lua:"),
-                'return { hardcover_token = "your token" }',
-                _("3. Come back here and select Check again."),
-                _("The token stays in that file. Afterword never shows it, and sends it only to Hardcover."),
+                _("Copy your API token from hardcover.app/account/api, then paste it here."),
             }) do rows[#rows + 1] = { kind = "note", text = line, height = 36, rule = false } end
-            rows[#rows + 1] = { kind = "button", text = _("Check again"), on_tap = function() state.menu:rebuild() end }
+            rows[#rows + 1] = { kind = "filter", text = _("Paste your token\u{2026}"), on_tap = function() Prefs.ask_token(state) end }
+            rows[#rows + 1] = { kind = "note", text = _("It is kept on this device, never shown, and sent only to Hardcover."), height = 36, rule = false }
         else
             local list = hardcover_list()
             local when = list and ago(list.imported)
@@ -928,6 +951,7 @@ local function hardcover_screen()
                 or _("Not synced yet.") }
             rows[#rows + 1] = { kind = "button", text = _("Sync now"), on_tap = function() Prefs.sync_hardcover(state.menu) end }
             if list then rows[#rows + 1] = { kind = "button", text = _("Browse the list"), on_tap = function() Prefs.push(browse_screen("hardcover")) end } end
+            rows[#rows + 1] = { kind = "button", text = _("Change token\u{2026}"), on_tap = function() Prefs.ask_token(state) end }
             rows[#rows + 1] = { kind = "button", text = _("Disconnect"), on_tap = function() Prefs.disconnect_hardcover(state) end }
         end
         rows[#rows + 1] = { kind = "spacer", rule = false, height = 20 }

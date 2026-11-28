@@ -2,6 +2,7 @@
 -- "Sync now". The token is read from a file on the device, never typed, never shown and never put in a message.
 --
 --   Hardcover.read_token(path)  -> the token, or nil when there is no file or no token in it
+--   Hardcover.write_token(path, token)  keeps a token a person pasted in (true, or nil when it is empty or the file cannot be written)
 --   Hardcover.forget(path)      removes the token (the file goes when nothing else is in it)
 --   Hardcover.books_from(answer) -> { source = "hardcover", books = { { title, author, series, series_index }, ... } } or nil, kind, detail
 --   Hardcover.fetch(token, io)  -> the same, asking Hardcover through io.post(url, headers, body) -> status, text, and io.encode / io.decode
@@ -43,11 +44,8 @@ function Hardcover.read_token(path)
     return value and type(value.hardcover_token) == "string" and clean(value.hardcover_token) or nil
 end
 
-function Hardcover.forget(path)
-    local value = load_file(path)
-    if not value then return end
-    value.hardcover_token = nil
-    if next(value) == nil then os.remove(path) return end
+-- Writes the table `value` (strings, numbers and booleans only) as a Lua file.
+local function save_file(path, value)
     local lines = { "return {" }
     for key, v in pairs(value) do
         if type(v) == "string" or type(v) == "number" or type(v) == "boolean" then
@@ -56,7 +54,25 @@ function Hardcover.forget(path)
     end
     lines[#lines + 1] = "}"
     local handle = io.open(path, "w")
-    if handle then handle:write(table.concat(lines, "\n"), "\n"); handle:close() end
+    if not handle then return false end
+    handle:write(table.concat(lines, "\n"), "\n")
+    handle:close()
+    return true
+end
+
+function Hardcover.write_token(path, token)
+    token = clean(token)
+    if not token then return nil end
+    local value = load_file(path) or {}
+    value.hardcover_token = token
+    return save_file(path, value) or nil
+end
+
+function Hardcover.forget(path)
+    local value = load_file(path)
+    if not value then return end
+    value.hardcover_token = nil
+    if next(value) == nil then os.remove(path) else save_file(path, value) end
 end
 
 local function first(list) return type(list) == "table" and list[1] or nil end
