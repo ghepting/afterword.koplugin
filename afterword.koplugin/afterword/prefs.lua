@@ -25,6 +25,8 @@ local PickMenu = require("afterword/picklist")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
 local Store = require("afterword/store")
+local Suggest = require("afterword/suggest")
+local Wanted = require("afterword/wanted")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -45,7 +47,7 @@ Prefs.ROWS = {
     { "next_in_series", _("Next in the series") }, { "picked_for_you", _("Picked for you") },
     { "something_different", _("Something different") }, { "started", _("Keep reading") },
     { "more_by_author", _("More by this author") }, { "collection", _("From your collection") },
-    { "recently_added", _("Recently added") }, { "on_hold", _("On hold") },
+    { "recently_added", _("Recently added") }, { "on_hold", _("On hold") }, { "want_to_read", _("Want to read") },
 }
 
 local function exclusions() return Exclusions.new(G_reader_settings) end
@@ -149,9 +151,22 @@ end
 local HEIGHT = {
     lead = 74, summary = 74, strip = 120, heading = 54, filter = 64, selectall = 54, item = 66, cover_item = 84, toggle = 62,
     segment = 88, message = 250, plain = 62, button = 66, spacer = 80, hint = 44,
+    tabs = 64, listing = 76, pair = 76, note = 44,
 }
 
 local function row_height(entry) return s(entry.height or HEIGHT[entry.kind] or 60) end
+
+-- The width of each tab of a row of tabs, the same for drawing and for finding which one was tapped.
+local function tab_widths(labels)
+    local widths = {}
+    for i, label in ipairs(labels) do
+        local widget = TextWidget:new { text = label, face = face(13), bold = true }
+        widths[i] = widget:getSize().w + s(28)
+        widget:free()
+    end
+    return widths
+end
+local TAB_GAP = 8
 
 -- The widget for an entry, `w` wide. Taps are answered by entry.on_tap(x), x being across the row.
 local function build(entry, w, state)
@@ -214,7 +229,9 @@ local function build(entry, w, state)
         parts[#parts + 1] = col
         return over(LeftContainer:new { dimen = Geom:new { w = w, h = h }, parts }, right_of(checkbox(entry.checked and "on" or "off"), h))
     elseif k == "toggle" then
-        return over(LeftContainer:new { dimen = Geom:new { w = w, h = h }, left(text(entry.text, 16, true, BLACK, inner - s(90))) }, right_of(switch(entry.on), h))
+        local col = VerticalGroup:new { align = "left", text(entry.text, 16, true, BLACK, inner - s(90)) }
+        if entry.sub then col[#col + 1] = text(entry.sub, 12, false, GREY, inner - s(90)) end
+        return over(LeftContainer:new { dimen = Geom:new { w = w, h = h }, left(col) }, right_of(switch(entry.on), h))
     elseif k == "segment" then
         local widths = { s(66), s(100), s(52) }
         local col = VerticalGroup:new { align = "left", text(entry.text, 16, true, BLACK, w - 2 * pad - s(230)) }
@@ -232,6 +249,36 @@ local function build(entry, w, state)
             col[#col + 1] = VerticalSpan:new { width = s(8) }
         end
         return CenterContainer:new { dimen = Geom:new { w = w, h = h }, col }
+    elseif k == "tabs" then
+        local widths = tab_widths(entry.labels)
+        local row = HorizontalGroup:new { align = "center", HorizontalSpan:new { width = pad } }
+        for i, label in ipairs(entry.labels) do
+            local on = i == entry.chosen
+            row[#row + 1] = FrameContainer:new { background = on and Header.accent() or WHITE, bordersize = Size.border.thin, radius = s(16), padding = 0, margin = 0,
+                CenterContainer:new { dimen = Geom:new { w = widths[i], h = s(32) },
+                    TextWidget:new { text = label, face = face(13), bold = on, fgcolor = on and WHITE or BLACK } } }
+            row[#row + 1] = HorizontalSpan:new { width = s(TAB_GAP) }
+        end
+        return row
+    elseif k == "listing" then
+        local parts = HorizontalGroup:new { align = "center", HorizontalSpan:new { width = pad } }
+        parts[#parts + 1] = H.cover(entry.cover, entry.text, s(40), s(60)) -- no cover for a book that is not on the device: an empty frame
+        parts[#parts + 1] = HorizontalSpan:new { width = s(14) }
+        local text_w = inner - s(54) - s(110)
+        local col = VerticalGroup:new { align = "left", text(entry.text, 16, true, BLACK, text_w) }
+        if entry.sub then col[#col + 1] = text(entry.sub, 12, false, GREY, text_w) end
+        parts[#parts + 1] = col
+        local side = VerticalGroup:new { align = "right", text(entry.marks or "", 12, true), text(entry.status or "", 11, false, GREY) }
+        return over(LeftContainer:new { dimen = Geom:new { w = w, h = h }, parts }, right_of(side, h))
+    elseif k == "pair" then
+        local half = math.floor((inner - s(12)) / 2)
+        local function button(label)
+            return FrameContainer:new { bordersize = Size.border.default, radius = s(8), padding = s(10), margin = 0, background = WHITE,
+                CenterContainer:new { dimen = Geom:new { w = half - s(20), h = s(26) }, text(label, 14, true) } }
+        end
+        return left(HorizontalGroup:new { button(entry.first), HorizontalSpan:new { width = s(12) }, button(entry.second) })
+    elseif k == "note" then
+        return left(text(entry.text, 12, false, GREY, inner))
     elseif k == "hint" then
         return CenterContainer:new { dimen = Geom:new { w = w, h = h }, text(entry.text, 12, false, GREY, inner) }
     end
@@ -400,14 +447,14 @@ function Prefs.pop()
     if parent then parent:rebuild() end
 end
 
-function Prefs.close_all()
+function Prefs.close_all(skip_done)
     local root
     for i = #stack, 1, -1 do
         root = stack[i]
         UIManager:close(stack[i])
         stack[i] = nil
     end
-    if root and root.on_done then root.on_done() end
+    if root and root.on_done and not skip_done then root.on_done() end
 end
 
 -- ----------------------------------------------------------------------------------------------------------------------------------------
@@ -645,6 +692,194 @@ local function collections_screen()
     end }
 end
 
+-- ----------------------------------------------------------------------------------------------------------------------------------------
+-- Want to read: the lists you imported, and a screen to browse them
+
+local SOURCES = {
+    goodreads = { _("Goodreads"), "GR" }, storygraph = { _("StoryGraph"), "SG" }, hardcover = { _("Hardcover"), "HC" }, csv = { _("CSV file"), "CSV" },
+}
+local function source_name(key) return SOURCES[key] and SOURCES[key][1] or tostring(key) end
+local function source_mark(key) return SOURCES[key] and SOURCES[key][2] or tostring(key):upper():sub(1, 3) end
+
+-- "today", "3 days ago": when a list was imported, in the words of the On hold row.
+local function ago(time)
+    local said = Suggest.put_down_text(time, os.time())
+    return said and said:lower() or nil
+end
+
+local function count_of(set)
+    local n = 0
+    for _key in pairs(set) do n = n + 1 end
+    return n
+end
+
+-- "Adrian Tchaikovsky \u{00B7} Book 4 of Children of Time"
+local function about_line(book)
+    local parts = {}
+    if book.author and book.author ~= "" then parts[#parts + 1] = book.author end
+    local series = Suggest.series_text(book)
+    if series then parts[#parts + 1] = series end
+    return #parts > 0 and table.concat(parts, " \u{00B7} ") or nil
+end
+
+-- Reads a CSV the person chose, says what is in it and how much of it is here, and keeps it as that source's list once they agree.
+function Prefs.import_from(file, menu)
+    local handle = io.open(file, "rb")
+    if not handle then
+        UIManager:show(InfoMessage:new { text = _("That file could not be read.") })
+        return
+    end
+    local text = handle:read("*a")
+    handle:close()
+    local list, why = Wanted.from_csv(text)
+    if not list then
+        UIManager:show(InfoMessage:new { text = why == "columns" and _("That file has no Title and Author columns, so it is not a list of books.") or _("That file has no books in it.") })
+        return
+    end
+    if #list.books == 0 then
+        UIManager:show(InfoMessage:new { text = _("That file has no books on its want-to-read shelf.") })
+        return
+    end
+    local here = count_of((Wanted.match(list, library().books)))
+    UIManager:show(ConfirmBox:new {
+        text = T(_("%1: %2 on the want-to-read shelf.\n\n%3 are on this device and will be tagged and ranked higher. %4 are not.\n\nThis replaces only the %1 list."),
+            source_name(list.source), plural(#list.books, _("%1 book"), _("%1 books")), here, #list.books - here),
+        ok_text = _("Import"),
+        ok_callback = function()
+            Wanted.save(G_reader_settings, list, os.time())
+            if menu then menu:rebuild() end
+        end,
+    })
+end
+
+-- Asks for a CSV file on the device.
+function Prefs.import_file(menu)
+    local PathChooser = require("ui/widget/pathchooser")
+    UIManager:show(PathChooser:new {
+        title = _("Choose a CSV file"), path = G_reader_settings:readSetting("home_dir") or "/",
+        select_directory = false, select_file = true, detailed_file_info = false,
+        file_filter = function(name) return name:lower():match("%.csv$") ~= nil end,
+        onConfirm = function(file) Prefs.import_from(file, menu) end,
+    })
+end
+
+-- Browse the lists: a tab for All (merged, books you have first) and one for each list, with that list's own actions under it.
+local function browse_screen(initial)
+    return { heading = _("Want to read"), build = function(state)
+        local lib = library()
+        local lists = {}
+        for _i, list in ipairs(Wanted.lists(G_reader_settings)) do
+            if #list.books > 0 then lists[#lists + 1] = list end
+        end
+        local merged = Wanted.merged(G_reader_settings)
+        state.tab = state.tab or initial or "all"
+        local current
+        for _i, list in ipairs(lists) do if list.source == state.tab then current = list end end
+        if not current then state.tab = "all" end
+        local labels, keys = { T(_("All %1"), #merged.books) }, { "all" }
+        for _i, list in ipairs(lists) do
+            labels[#labels + 1] = T(_("%1 %2"), source_name(list.source), #list.books)
+            keys[#keys + 1] = list.source
+        end
+        local chosen = 1
+        for i, key in ipairs(keys) do if key == state.tab then chosen = i end end
+        local rows = {}
+        if #lists == 0 then
+            rows[#rows + 1] = { kind = "message", lines = { { _("No lists yet"), 18, true }, { _("Import one from Want to read in Preferences."), 13, false, GREY } } }
+            return rows
+        end
+        rows[#rows + 1] = { kind = "tabs", labels = labels, chosen = chosen, rule = false,
+            on_tap = function(x)
+                local widths, at = tab_widths(labels), s(22)
+                for i, width in ipairs(widths) do
+                    if x >= at and x < at + width then
+                        state.tab = keys[i]
+                        state.menu.page = 1
+                        state.menu:rebuild()
+                        return
+                    end
+                    at = at + width + s(TAB_GAP)
+                end
+            end }
+        local books = current and current.books or merged.books
+        local owned = Wanted.match({ books = books }, lib.books)
+        local path_of = {}
+        for path, entry in pairs(owned) do path_of[entry] = path end
+        local here, rest = {}, {}
+        for _i, book in ipairs(books) do table.insert(path_of[book] and here or rest, book) end
+        local note = T(_("%1 on this device \u{00B7} %2 not"), #here, #rest)
+        if current then
+            local when = ago(current.imported)
+            if when then note = T(_("Imported %1 \u{00B7} %2"), when, note) end
+        end
+        rows[#rows + 1] = { kind = "note", text = note, rule = false }
+        for _i, group in ipairs({ here, rest }) do
+            for _j, book in ipairs(group) do
+                local path = path_of[book]
+                local marks = {}
+                for _k, source in ipairs(book.sources or { state.tab }) do marks[#marks + 1] = source_mark(source) end
+                rows[#rows + 1] = { kind = "listing", text = book.title, sub = about_line(book), cover = path, marks = table.concat(marks, " "),
+                    status = path and _("On this device") or _("not on device"),
+                    on_tap = path and function()
+                        if Prefs.open_book then Prefs.close_all(true); Prefs.open_book(path) end
+                    end or nil }
+            end
+        end
+        if current then
+            rows[#rows + 1] = { kind = "pair", first = _("Import again"), second = _("Remove this list"), rule = false,
+                on_tap = function(x, w)
+                    if x < w / 2 then
+                        Prefs.import_file(state.menu)
+                    else
+                        UIManager:show(ConfirmBox:new {
+                            text = T(_("Remove the %1 list?\n\n%2. Books that are on no other list stop being tagged and ranked higher. Nothing is deleted from your library or your account."),
+                                source_name(current.source), plural(#current.books, _("%1 book"), _("%1 books"))),
+                            ok_text = _("Remove list"),
+                            ok_callback = function()
+                                Wanted.forget(G_reader_settings, current.source)
+                                state.tab = "all"
+                                if #Wanted.lists(G_reader_settings) == 0 then Prefs.pop() else state.menu:rebuild() end
+                            end,
+                        })
+                    end
+                end }
+            rows[#rows + 1] = { kind = "note", text = T(_("Removing a list forgets it here only. Your %1 account is untouched."), source_name(current.source)), rule = false }
+        end
+        rows[#rows + 1] = { kind = "spacer", rule = false, height = 20 }
+        return rows
+    end }
+end
+
+-- The lists you imported (tap one to browse it), how to import another, and the two switches.
+local function wanted_screen()
+    return { heading = _("Want to read"), build = function(state)
+        local lib = library()
+        local lists = Wanted.lists(G_reader_settings)
+        local rows = { { kind = "lead", text = _("Want to read"), sub = _("Books you mean to read, from lists kept elsewhere."), height = 66 } }
+        for _i, list in ipairs(lists) do
+            local here = count_of((Wanted.match({ books = list.books }, lib.books)))
+            local when = ago(list.imported)
+            local sub = plural(#list.books, _("%1 book"), _("%1 books")) .. (when and (" \u{00B7} " .. T(_("imported %1"), when)) or "")
+                .. " \u{00B7} " .. T(_("%1 on this device"), here)
+            rows[#rows + 1] = { kind = "summary", text = source_name(list.source), sub = sub, count = source_mark(list.source),
+                on_tap = function() Prefs.push(browse_screen(list.source)) end }
+        end
+        if #lists == 0 then
+            rows[#rows + 1] = { kind = "message", height = 130, lines = { { _("No lists yet"), 18, true },
+                { _("Export your want-to-read shelf from Goodreads or StoryGraph"), 12, false, GREY },
+                { _("as a CSV file, put it on this device and import it here."), 12, false, GREY } } }
+        end
+        rows[#rows + 1] = { kind = "button", text = _("Import a list from a file\u{2026}"), on_tap = function() Prefs.import_file(state.menu) end }
+        local boost, show = Wanted.boost(G_reader_settings), Wanted.show_unowned(G_reader_settings)
+        rows[#rows + 1] = { kind = "toggle", height = 72, text = _("Rank books on my lists higher"), sub = _("Books you have that are on a list come first in the picks"), on = boost,
+            on_tap = function() Wanted.set_boost(G_reader_settings, not boost); state.menu:rebuild() end }
+        rows[#rows + 1] = { kind = "toggle", height = 72, text = _("Show books I don't own"), sub = _("A Want to read row in the picks, up to 4 books"), on = show,
+            on_tap = function() Wanted.set_show_unowned(G_reader_settings, not show); state.menu:rebuild() end }
+        rows[#rows + 1] = { kind = "spacer", rule = false, height = 20 }
+        return rows
+    end }
+end
+
 local function overview_screen()
     return { heading = _("Preferences"), build = function(state)
         local ex, lib = exclusions(), library()
@@ -697,18 +932,21 @@ local function overview_screen()
         rows[#rows + 1] = { kind = "summary", text = _("Collections"), count = skipped > 0 and T(_("%1 skipped"), skipped) or "",
             sub = skipped > 0 and names("collection") or nil, on_tap = open(collections_screen()) }
         rows[#rows + 1] = { kind = "plain", text = _("Suggest from"), value = chosen or _("None"), on_tap = open(collections_screen()) }
+        local lists = Wanted.lists(G_reader_settings)
+        rows[#rows + 1] = { kind = "plain", text = _("Want to read"), value = #lists > 0 and plural(#lists, _("%1 list"), _("%1 lists")) or _("None"), on_tap = open(wanted_screen()) }
         if total > 0 then rows[#rows + 1] = { kind = "hint", text = _("Press and hold any book in the list to hide it") } end
         return rows
     end }
 end
 
 -- The screens by name, and the one on top: for a test driver to open one directly and look at it.
-Prefs.screens = { hidden = hidden_screen, rows = rows_screen, collections = collections_screen, overview = overview_screen }
+Prefs.screens = { hidden = hidden_screen, rows = rows_screen, collections = collections_screen, overview = overview_screen, wanted = wanted_screen, browse = browse_screen }
 function Prefs.top() return stack[#stack] end
 
 -- Opens the Preferences. `on_done` runs when the last screen is closed (the list behind it can show what changed).
-function Prefs.show(on_done)
+function Prefs.show(on_done, open_book)
     if stack[1] then return end -- already open
+    Prefs.open_book = open_book -- opens a book of a list you are browsing: closes these screens and the list behind them
     Prefs.push(overview_screen(), on_done)
 end
 

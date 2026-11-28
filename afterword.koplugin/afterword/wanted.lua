@@ -140,21 +140,58 @@ function Wanted.match(wanted, library)
 end
 
 -- What is kept in KOReader's settings (`settings` is G_reader_settings, or any object with readSetting / saveSetting / delSetting).
-local LIST, BOOST, SHOW = "afterword_wanted", "afterword_wanted_boost", "afterword_wanted_show_unowned"
+-- One list per source ("goodreads", "storygraph", "hardcover", "csv"): importing a source again replaces only its own list.
+local LISTS, BOOST, SHOW = "afterword_wanted", "afterword_wanted_boost", "afterword_wanted_show_unowned"
 
--- The saved list, { source, books, imported }, or nil.
-function Wanted.saved(settings)
-    local list = settings:readSetting(LIST)
-    return type(list) == "table" and type(list.books) == "table" and list or nil
+local function all(settings)
+    local lists = settings:readSetting(LISTS)
+    return type(lists) == "table" and lists or {}
+end
+
+-- The saved lists, { { source, books, imported }, ... }, in the order of their names.
+function Wanted.lists(settings)
+    local out = {}
+    for source, list in pairs(all(settings)) do
+        if type(list) == "table" and type(list.books) == "table" then
+            out[#out + 1] = { source = source, books = list.books, imported = list.imported }
+        end
+    end
+    table.sort(out, function(a, b) return a.source < b.source end)
+    return out
 end
 
 function Wanted.save(settings, list, now)
-    settings:saveSetting(LIST, { source = list.source, books = list.books, imported = now })
+    local lists = all(settings)
+    lists[list.source] = { books = list.books, imported = now }
+    settings:saveSetting(LISTS, lists)
 end
 
-function Wanted.forget(settings) settings:delSetting(LIST) end
+-- Forgets one source's list.
+function Wanted.forget(settings, source)
+    local lists = all(settings)
+    lists[source] = nil
+    if next(lists) then settings:saveSetting(LISTS, lists) else settings:delSetting(LISTS) end
+end
 
--- Owned books of the list are ranked higher (on unless switched off); books you do not own get a row (off unless switched on).
+-- Every list as one: a book on several lists once, with `sources` saying which, in the order of the lists.
+function Wanted.merged(settings)
+    local books, seen = {}, {}
+    for _i, list in ipairs(Wanted.lists(settings)) do
+        for _j, b in ipairs(list.books) do
+            local key = Wanted.title_key(b.title) .. "|" .. Wanted.surname(b.author)
+            local at = seen[key]
+            if at then
+                table.insert(books[at].sources, list.source)
+            else
+                books[#books + 1] = { title = b.title, author = b.author, series = b.series, series_index = b.series_index, sources = { list.source } }
+                seen[key] = #books
+            end
+        end
+    end
+    return { books = books }
+end
+
+-- Owned books of the lists are ranked higher (on unless switched off); books you do not own get a row (off unless switched on).
 function Wanted.boost(settings) return settings:readSetting(BOOST) ~= false end
 function Wanted.set_boost(settings, on) settings:saveSetting(BOOST, on and true or false) end
 function Wanted.show_unowned(settings) return settings:readSetting(SHOW) == true end

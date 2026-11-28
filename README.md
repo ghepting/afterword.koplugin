@@ -71,6 +71,19 @@ Everything you have hidden is in **Preferences**, from Tools › Afterword or by
   <img src="assets/prefs-select.png" width="400" alt="Hidden authors, two ticked, with a bar at the bottom reading 2 selected, Cancel and Bring back">
 </p>
 
+## Books you mean to read
+
+Afterword can favour the books on your want-to-read shelf. In **Preferences › Want to read**, **Import a list from a file…** reads a CSV exported from Goodreads (My Books › Import and export › Export Library) or from StoryGraph's export page, or any CSV with a Title and an Author column, and keeps only the books on its to-read shelf. Each service keeps its own list, and importing one again replaces only that one. It asks first, saying how many of the books are in your library. Books are matched to your library by title and the author's surname, ignoring a leading "The", a subtitle and the series Goodreads puts in brackets. Nothing is sent anywhere: Afterword only reads the file.
+
+- **Books you have** are tagged **TBR**, and the pick for you is one of them (with the line "On your want-to-read list"). They also come first in Recently added. Switch off **Rank books on my lists higher** to keep the tag and nothing else.
+- **Books you don't have** appear only if you switch on **Show books I don't own**: a **Want to read** row of up to four, each with an empty frame where a cover would be. There is nothing to open, so tapping one offers a sheet that says so, and a way to switch the row off again.
+- **Browsing a list.** Tap a list in Want to read to browse it, with a tab for **All** (every list merged, books you have first) and one for each list. A book you have opens when you tap it. A list's tab has **Import again** and **Remove this list**, which asks first and forgets the list here only.
+
+<p align="center">
+  <img src="assets/want-to-read-picks.png" width="400" alt="The list with a book picked from the want-to-read list, a small TBR pill on a book in Recently added, and a Want to read row of two books with empty frames in place of covers">
+  <img src="assets/want-to-read.png" width="400" alt="Browsing the want-to-read lists: tabs for All, Goodreads and StoryGraph, then each book with its cover or an empty frame, a GR or SG mark, and whether it is on the device">
+</p>
+
 ## Settings
 
 **Tools › Afterword**, in a book or in the file browser:
@@ -78,7 +91,7 @@ Everything you have hidden is in **Preferences**, from Tools › Afterword or by
 - **Show at the end of a book.** On by default. Off, KOReader's own end-of-book popup is used as before.
 - **What to read next.** The same list, whenever you want it, from a book you have open or from the file browser: for when you started a book and are not into it. From a book you have open it leaves out the next-in-series and more-by groups, which are about the book you are leaving; from the file browser they follow on from the book you read last. It does not touch the open book: it stays "reading" and turns up under "Keep reading". It is also in KOReader's action list (**Afterword: what to read next**), so a gesture, profile or hotkey can start it.
 - **Suggest from a collection….** Pick any KOReader collection, and Pick next also offers its first books, in its own order. A Bookshelf shelf is a collection, so it works with one. Choose **None** to turn it off.
-- **Preferences.** One screen for everything you told Afterword not to suggest, from Tools › Afterword or from the menu behind the mark in the list's header (the same menu has Check for updates and Close). It has a row per kind with a count: hidden books (with their covers), snoozed books, authors, series, rows of the list and collections. A kind opens its own screen: select any number with the checkboxes (or Select all) and bring them back from the bar that floats at the bottom, which asks before it does. Authors and series have **+ Hide an author…** to pick from your whole library without finding one of their books first. Rows have a switch each, and each collection is Normal, Suggest from or Skip. It is built to hold a long list: a filter box appears when there are many, and a screen pages only when it overflows.
+- **Preferences.** One screen for everything you told Afterword not to suggest, from Tools › Afterword or from the menu behind the mark in the list's header (the same menu has Check for updates and Close). It has a row per kind with a count: hidden books (with their covers), snoozed books, authors, series, rows of the list and collections. A kind opens its own screen: select any number with the checkboxes (or Select all) and bring them back from the bar that floats at the bottom, which asks before it does. Authors and series have **+ Hide an author…** to pick from your whole library without finding one of their books first. Rows have a switch each, and each collection is Normal, Suggest from or Skip. **Want to read** (see above) is here too, for importing and browsing the lists you keep elsewhere. It is built to hold a long list: a filter box appears when there are many, and a screen pages only when it overflows.
 - **Check for updates.** Asks GitHub whether a newer Afterword has been released, only when you tap it. If there is one it shows the release notes and offers to download it, check it against GitHub's checksum, install it and restart KOReader. If anything goes wrong nothing is changed, and the old version is kept as `afterword.koplugin.old`. A copy that is a link to a source checkout is not updated from here.
 
 ## Install

@@ -67,6 +67,13 @@ end
 
 -- The cover of a book, in a box about w by h: the picture from KOReader's cache, or a plain box with the title when it has none.
 local function cover(path, title, w, h)
+    if not path then -- a book of a want-to-read list that is not on the device: an empty frame, there is nothing to show
+        return FrameContainer:new {
+            background = Blitbuffer.COLOR_WHITE, bordersize = Size.border.thin, padding = 0, margin = 0,
+            CenterContainer:new { dimen = Geom:new { w = w, h = h },
+                TextWidget:new { text = "+", face = Font:getFace("tfont", 22), fgcolor = Blitbuffer.COLOR_GRAY_4 } },
+        }
+    end
     local image
     pcall(function()
         local BIM = require("bookinfomanager")
@@ -175,7 +182,15 @@ function PickRow:buildCard(card)
         local author = authors_of(book)
         if author ~= "" then list[#list + 1] = { TextWidget:new { text = author, face = face(13), max_width = text_w, truncate_with_ellipsis = true }, s(2) } end
         local series = with_series and Suggest.series_text(book)
-        if series then list[#list + 1] = { TextWidget:new { text = series, face = face(11), fgcolor = GREY, max_width = text_w, truncate_with_ellipsis = true }, s(2) } end
+        local tag = book.listed and not book.listed_pick and badge(_("TBR"), 10, true) -- on your want-to-read list (a pick made for it says so itself)
+        if series then
+            local room = tag and (text_w - tag:getSize().w - s(8)) or text_w
+            local line = TextWidget:new { text = series, face = face(11), fgcolor = GREY, max_width = room, truncate_with_ellipsis = true }
+            if tag then line = HorizontalGroup:new { align = "center", line, HorizontalSpan:new { width = s(8) }, tag } end
+            list[#list + 1] = { line, s(2) }
+        elseif tag then
+            list[#list + 1] = { tag, s(2) }
+        end
         local gap = Suggest.gap_text(book)
         if gap then list[#list + 1] = { badge(gap, 11), s(5) } end
         if why_lines > 0 and card.why and card.why ~= "" then list[#list + 1] = { capped_text(card.why, face(12), text_w, why_lines), s(6) } end
@@ -224,14 +239,25 @@ local function list_text(book, progress, d)
     local meta = shelf_meta(book, false) -- the percentage is not here: it goes by the bar
     -- the badge goes on the line of "Book 8" (a book that skips ahead has a number), so it costs the row no height
     local meta_widget = meta and TextWidget:new { text = meta, face = d.f_meta, fgcolor = Blitbuffer.COLOR_GRAY_4, max_width = d.text_w, truncate_with_ellipsis = true }
-    if gap then
-        local pill = badge(gap, 10, true)
+    local pills = {}
+    if gap then table.insert(pills, 1, badge(gap, 10, true)) end
+    if book.listed then table.insert(pills, 1, badge(_("TBR"), 10, true)) end -- on your want-to-read list; the first to go if the line is too narrow
+    local function pills_width(list)
+        local w = 0
+        for _i, p in ipairs(list) do w = w + p:getSize().w + s(6) end
+        return w - s(6)
+    end
+    if #pills == 2 and pills_width(pills) > d.text_w then table.remove(pills, 1) end
+    if #pills > 0 then
         local line = HorizontalGroup:new { align = "center" }
-        if meta_widget and meta_widget:getSize().w + s(6) + pill:getSize().w <= d.text_w then
+        if meta_widget and meta_widget:getSize().w + s(6) + pills_width(pills) <= d.text_w then
             line[#line + 1] = meta_widget
             line[#line + 1] = HorizontalSpan:new { width = s(6) }
         end
-        line[#line + 1] = pill
+        for i, p in ipairs(pills) do
+            line[#line + 1] = p
+            if i < #pills then line[#line + 1] = HorizontalSpan:new { width = s(6) } end
+        end
         col[#col + 1] = line
     elseif meta_widget then
         col[#col + 1] = meta_widget

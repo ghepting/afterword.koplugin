@@ -229,7 +229,17 @@ function Afterword:suggestions(file, without, just_finished)
         if #paths > 0 then collection = { name = name, paths = paths } end
     end
     local lfs = require("libs/libkoreader-lfs")
+    -- The books you mean to read, from the lists you imported: those you own are tagged and boosted, the rest may get a row.
+    local Wanted = require("afterword/wanted")
+    local merged = Wanted.merged(G_reader_settings)
+    local wanted, unowned
+    if #merged.books > 0 then
+        local owned, missing = Wanted.match(merged, library)
+        wanted = owned
+        if Wanted.show_unowned(G_reader_settings) then unowned = missing end
+    end
     return Suggest.groups {
+        wanted = wanted, boost = Wanted.boost(G_reader_settings), unowned = unowned,
         current = file, follow = (not file) and history[1] or nil, finished = just_finished and file or nil, library = library, status_of = status_of, without = without,
         rating_of = function(path)
             local info = require("ui/widget/booklist").getBookInfo(path)
@@ -299,6 +309,26 @@ function Afterword:askToHide(book, where, again)
     UIManager:show(Sheet.Sheet:new { title = book.title or "?", subtitle = about, cover_path = book.path, options = options, cancel_text = _("Cancel") })
 end
 
+-- The list again, with whatever changed.
+function Afterword:reshow(info, on_open, opts)
+    if self.picker then UIManager:close(self.picker); self.picker = nil end
+    self:showPicker(info, on_open, opts)
+end
+
+-- A book of your want-to-read list that is not in the library: there is nothing to open, so a sheet says so and offers to stop showing them.
+function Afterword:askAboutUnowned(book, again)
+    local Sheet = require("afterword/sheet")
+    local Wanted = require("afterword/wanted")
+    local about = tostring(book.authors or ""):gsub("\n", ", ")
+    local series = Suggest.series_text(book)
+    if series then about = (about ~= "" and about .. " \u{00B7} " or "") .. series end
+    about = (about ~= "" and about .. " \u{00B7} " or "") .. _("not on this device")
+    UIManager:show(Sheet.Sheet:new { title = book.title or "?", subtitle = about, options = {
+        { title = _("Stop showing books I don't own"), subtitle = _("Turn the Want to read row off. Switch it on again in Preferences."),
+          callback = function() Wanted.set_show_unowned(G_reader_settings, false); again() end },
+    }, cancel_text = _("Cancel") })
+end
+
 -- The mark in the list's header opens this, as ShelfSpace's logo does: the plugin's own few actions.
 function Afterword:showMarkMenu(after_preferences)
     local dialog
@@ -316,7 +346,7 @@ end
 
 -- What the person told Afterword not to suggest, in one place. `on_done` runs when it is closed.
 function Afterword:showPreferences(on_done)
-    require("afterword/prefs").show(on_done)
+    require("afterword/prefs").show(on_done, function(path) self:openBook(path) end)
 end
 
 -- The list when it has nothing in it: either nothing has been hidden (so there is nothing to suggest from), or what was hidden
@@ -373,6 +403,7 @@ function Afterword:showPicker(info, on_open, opts)
         something_different = function() return _("Something different") end,
         recently_added = function() return _("Recently added") end,
         on_hold = function() return _("On hold") end,
+        want_to_read = function() return _("Want to read") end,
         started = function() return _("Keep reading") end,
     }
     -- The first two single picks sit side by side at the top; every other group (and any further single pick) is a column of books
@@ -406,7 +437,10 @@ function Afterword:showPicker(info, on_open, opts)
         title = opts.title or _("Pick next"), item_table = items, items_max_lines = 2, -- rows of different heights: PickMenu measures and draws them
         is_borderless = true, is_popout = false, covers_fullscreen = true, is_enable_shortcut = false,
         close_callback = function() UIManager:close(menu) end,
-        on_open = function(book) on_open(book.path) end,
+        on_open = function(book)
+            if book.unowned then self:askAboutUnowned(book, function() self:reshow(info, on_open, opts) end) return end
+            on_open(book.path)
+        end,
         on_mark = function()
             self:showMarkMenu(function()
                 if self.picker then UIManager:close(self.picker); self.picker = nil end
@@ -414,6 +448,7 @@ function Afterword:showPicker(info, on_open, opts)
             end)
         end,
         on_hide = function(book, where)
+            if book.unowned then self:askAboutUnowned(book, function() self:reshow(info, on_open, opts) end) return end
             self:askToHide(book, where, function()
                 if self.picker then UIManager:close(self.picker); self.picker = nil end
                 self:showPicker(info, on_open, opts) -- the same list, without the book
