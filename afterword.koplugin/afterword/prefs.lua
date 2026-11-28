@@ -24,6 +24,7 @@ local OverlapGroup = require("ui/widget/overlapgroup")
 local PickMenu = require("afterword/picklist")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
+local Hardcover = require("afterword/hardcover")
 local Store = require("afterword/store")
 local Suggest = require("afterword/suggest")
 local Wanted = require("afterword/wanted")
@@ -810,7 +811,7 @@ local function browse_screen(initial)
         local note = T(_("%1 on this device \u{00B7} %2 not"), #here, #rest)
         if current then
             local when = ago(current.imported)
-            if when then note = T(_("Imported %1 \u{00B7} %2"), when, note) end
+            if when then note = T(current.source == "hardcover" and _("Synced %1 \u{00B7} %2") or _("Imported %1 \u{00B7} %2"), when, note) end
         end
         rows[#rows + 1] = { kind = "note", text = note, rule = false }
         for _i, group in ipairs({ here, rest }) do
@@ -826,10 +827,13 @@ local function browse_screen(initial)
             end
         end
         if current then
-            rows[#rows + 1] = { kind = "pair", first = _("Import again"), second = _("Remove this list"), rule = false,
+            local live = current.source == "hardcover" -- a list kept by asking a service: Sync now and Disconnect, not a file's Import again and Remove
+            rows[#rows + 1] = { kind = "pair", first = live and _("Sync now") or _("Import again"), second = live and _("Disconnect") or _("Remove this list"), rule = false,
                 on_tap = function(x, w)
                     if x < w / 2 then
-                        Prefs.import_file(state.menu)
+                        if live then Prefs.sync_hardcover(state.menu) else Prefs.import_file(state.menu) end
+                    elseif live then
+                        Prefs.disconnect_hardcover(state, true)
                     else
                         UIManager:show(ConfirmBox:new {
                             text = T(_("Remove the %1 list?\n\n%2. Books that are on no other list stop being tagged and ranked higher. Nothing is deleted from your library or your account."),
@@ -843,10 +847,102 @@ local function browse_screen(initial)
                         })
                     end
                 end }
-            rows[#rows + 1] = { kind = "note", text = T(_("Removing a list forgets it here only. Your %1 account is untouched."), source_name(current.source)), rule = false }
+            rows[#rows + 1] = { kind = "note", rule = false,
+                text = live and _("Disconnecting forgets this list and removes the token from Afterword's settings file.")
+                    or T(_("Removing a list forgets it here only. Your %1 account is untouched."), source_name(current.source)) }
         end
         rows[#rows + 1] = { kind = "spacer", rule = false, height = 20 }
         return rows
+    end }
+end
+
+-- Asks Hardcover for the want-to-read shelf and keeps it as its own list. Only when a token is in the sources file; says what happened.
+function Prefs.sync_hardcover(menu)
+    local token = Hardcover.read_token(Hardcover.path())
+    if not token then
+        UIManager:show(InfoMessage:new { text = Hardcover.explain("token") })
+        return
+    end
+    require("ui/network/manager"):runWhenOnline(function()
+        local busy = InfoMessage:new { text = _("Syncing with Hardcover\u{2026}") }
+        UIManager:show(busy)
+        UIManager:forceRePaint()
+        local ok, list, kind, detail = pcall(Hardcover.fetch_now, token)
+        UIManager:close(busy)
+        if not ok then list, kind, detail = nil, "network", "error" end
+        if not list then
+            UIManager:show(InfoMessage:new { text = Hardcover.explain(kind, detail) })
+            return
+        end
+        Wanted.save(G_reader_settings, list, os.time())
+        if menu then menu:rebuild() end
+        UIManager:show(InfoMessage:new { text = T(_("Synced %1 from Hardcover."), plural(#list.books, _("%1 book"), _("%1 books"))), timeout = 3 })
+    end)
+end
+
+-- Forgets the Hardcover list and the token. `state` is the screen's; `from_browse` is true on the list's own tab, which has nothing left to
+-- show once the last list is gone, so it closes.
+function Prefs.disconnect_hardcover(state, from_browse)
+    UIManager:show(ConfirmBox:new {
+        text = _("Disconnect Hardcover?\n\nThis forgets the list here and removes the token from Afterword's settings file. Your Hardcover account is untouched."),
+        ok_text = _("Disconnect"),
+        ok_callback = function()
+            Hardcover.forget(Hardcover.path())
+            Wanted.forget(G_reader_settings, "hardcover")
+            state.tab = "all"
+            if from_browse and #Wanted.lists(G_reader_settings) == 0 then
+                Prefs.pop()
+            else
+                state.menu:rebuild()
+            end
+        end,
+    })
+end
+
+local function hardcover_list()
+    for _i, list in ipairs(Wanted.lists(G_reader_settings)) do
+        if list.source == "hardcover" then return list end
+    end
+end
+
+-- Hardcover: how to connect it while there is no token, and what it is doing once there is one.
+local function hardcover_screen()
+    return { heading = _("Hardcover"), build = function(state)
+        local token = Hardcover.read_token(Hardcover.path())
+        local rows = { { kind = "lead", text = _("Hardcover"), sub = token and _("Connected") or _("Not connected yet"), height = 66 } }
+        if not token then
+            for _i, line in ipairs({
+                _("Hardcover can share your want-to-read shelf with Afterword."),
+                _("1. Copy your API token from hardcover.app/account/api."),
+                _("2. Save it on this device, in koreader/settings/afterword_sources.lua:"),
+                'return { hardcover_token = "your token" }',
+                _("3. Come back here and select Check again."),
+                _("The token stays in that file. Afterword never shows it, and sends it only to Hardcover."),
+            }) do rows[#rows + 1] = { kind = "note", text = line, height = 36, rule = false } end
+            rows[#rows + 1] = { kind = "button", text = _("Check again"), on_tap = function() state.menu:rebuild() end }
+        else
+            local list = hardcover_list()
+            local when = list and ago(list.imported)
+            rows[#rows + 1] = { kind = "note", rule = false, text = list
+                and (plural(#list.books, _("%1 book"), _("%1 books")) .. _(" on your want-to-read shelf") .. (when and (" \u{00B7} " .. T(_("synced %1"), when)) or ""))
+                or _("Not synced yet.") }
+            rows[#rows + 1] = { kind = "button", text = _("Sync now"), on_tap = function() Prefs.sync_hardcover(state.menu) end }
+            if list then rows[#rows + 1] = { kind = "button", text = _("Browse the list"), on_tap = function() Prefs.push(browse_screen("hardcover")) end } end
+            rows[#rows + 1] = { kind = "button", text = _("Disconnect"), on_tap = function() Prefs.disconnect_hardcover(state) end }
+        end
+        rows[#rows + 1] = { kind = "spacer", rule = false, height = 20 }
+        return rows
+    end }
+end
+
+local function connect_screen()
+    return { heading = _("Connect a service"), build = function(state)
+        return {
+            { kind = "lead", text = _("Connect a service"), sub = _("Services Afterword can read a want-to-read list from."), height = 66 },
+            { kind = "summary", text = _("Hardcover"), sub = _("Your want-to-read shelf, fetched when you ask"), count = "",
+              on_tap = function() Prefs.push(hardcover_screen()) end },
+            { kind = "spacer", rule = false, height = 20 },
+        }
     end }
 end
 
@@ -859,7 +955,7 @@ local function wanted_screen()
         for _i, list in ipairs(lists) do
             local here = count_of((Wanted.match({ books = list.books }, lib.books)))
             local when = ago(list.imported)
-            local sub = plural(#list.books, _("%1 book"), _("%1 books")) .. (when and (" \u{00B7} " .. T(_("imported %1"), when)) or "")
+            local sub = plural(#list.books, _("%1 book"), _("%1 books")) .. (when and (" \u{00B7} " .. T(list.source == "hardcover" and _("synced %1") or _("imported %1"), when)) or "")
                 .. " \u{00B7} " .. T(_("%1 on this device"), here)
             rows[#rows + 1] = { kind = "summary", text = source_name(list.source), sub = sub, count = source_mark(list.source),
                 on_tap = function() Prefs.push(browse_screen(list.source)) end }
@@ -869,7 +965,15 @@ local function wanted_screen()
                 { _("Export your want-to-read shelf from Goodreads or StoryGraph"), 12, false, GREY },
                 { _("as a CSV file, put it on this device and import it here."), 12, false, GREY } } }
         end
+        local connected = Hardcover.read_token(Hardcover.path()) ~= nil
+        if connected and not hardcover_list() then
+            rows[#rows + 1] = { kind = "summary", text = _("Hardcover"), sub = _("Connected \u{00B7} not synced yet"), count = source_mark("hardcover"),
+                on_tap = function() Prefs.push(hardcover_screen()) end }
+        end
         rows[#rows + 1] = { kind = "button", text = _("Import a list from a file\u{2026}"), on_tap = function() Prefs.import_file(state.menu) end }
+        if not connected then
+            rows[#rows + 1] = { kind = "button", text = _("Connect a service\u{2026}"), on_tap = function() Prefs.push(connect_screen()) end }
+        end
         local boost, show = Wanted.boost(G_reader_settings), Wanted.show_unowned(G_reader_settings)
         rows[#rows + 1] = { kind = "toggle", height = 72, text = _("Rank books on my lists higher"), sub = _("Books you have that are on a list come first in the picks"), on = boost,
             on_tap = function() Wanted.set_boost(G_reader_settings, not boost); state.menu:rebuild() end }
@@ -940,7 +1044,7 @@ local function overview_screen()
 end
 
 -- The screens by name, and the one on top: for a test driver to open one directly and look at it.
-Prefs.screens = { hidden = hidden_screen, rows = rows_screen, collections = collections_screen, overview = overview_screen, wanted = wanted_screen, browse = browse_screen }
+Prefs.screens = { hidden = hidden_screen, rows = rows_screen, collections = collections_screen, overview = overview_screen, wanted = wanted_screen, browse = browse_screen, hardcover = hardcover_screen, connect = connect_screen }
 function Prefs.top() return stack[#stack] end
 
 -- Opens the Preferences. `on_done` runs when the last screen is closed (the list behind it can show what changed).
