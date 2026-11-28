@@ -1,0 +1,112 @@
+local T = dofile((debug.getinfo(1, "S").source:match("^@(.*)/[^/]+$") or ".") .. "/helper.lua")
+local Wanted = require("afterword/wanted")
+
+print("wanted")
+
+T.test("a CSV with quotes, commas, doubled quotes, line breaks, CRLF and a byte order mark parses", function()
+    local rows = Wanted.parse("\239\187\191a,b\r\n\"x, y\",\"say \"\"hi\"\"\"\r\n\"two\nlines\",z\r\n")
+    T.eq(#rows, 3)
+    T.eq(rows[1][1], "a")
+    T.eq(rows[2][1], "x, y")
+    T.eq(rows[2][2], 'say "hi"')
+    T.eq(rows[3][1], "two\nlines")
+    T.eq(rows[3][2], "z")
+end)
+T.test("a last line with no line break, and empty lines, are handled", function()
+    local rows = Wanted.parse("a,b\n\n1,2")
+    T.eq(#rows, 2)
+    T.eq(rows[2][2], "2")
+end)
+
+local GOODREADS = table.concat({
+    'Book Id,Title,Author,Author l-f,ISBN13,Exclusive Shelf',
+    '1,"The Hallmarked Man (Cormoran Strike, #7)",Robert Galbraith,"Galbraith, Robert",="9780316499026",to-read',
+    '2,"Dune",Frank Herbert,"Herbert, Frank",="1",read',
+    '3,"The Will of the Many (Hierarchy, #1)",James Islington,"Islington, James",="2",to-read',
+    '4,"Project Hail Mary",Andy Weir,"Weir, Andy",="3",to-read',
+    '5,"Artemis",Andy Weir,"Weir, Andy",="4",currently-reading',
+}, "\n")
+
+T.test("a Goodreads export gives the to-read shelf only, with the series taken out of the title", function()
+    local w = Wanted.from_csv(GOODREADS)
+    T.eq(w.source, "goodreads")
+    T.eq(#w.books, 3)
+    T.eq(w.books[1].title, "The Hallmarked Man")
+    T.eq(w.books[1].series, "Cormoran Strike")
+    T.eq(w.books[1].series_index, 7)
+    T.eq(w.books[1].author, "Robert Galbraith")
+    T.eq(w.books[3].title, "Project Hail Mary")
+    T.eq(w.books[3].series, nil)
+end)
+T.test("a StoryGraph export gives the to-read books", function()
+    local w = Wanted.from_csv('Title,Authors,Read Status\nThe Tainted Cup,"Robert Jackson Bennett, Other Person",to-read\nOld,Someone Else,read\n')
+    T.eq(w.source, "storygraph")
+    T.eq(#w.books, 1)
+    T.eq(w.books[1].author, "Robert Jackson Bennett")
+end)
+T.test("any other CSV with a title and an author column is taken whole", function()
+    local w = Wanted.from_csv("Author,Title\nAndy Weir,Artemis\n")
+    T.eq(w.source, "csv")
+    T.eq(#w.books, 1)
+end)
+T.test("a file with no title or author column, or nothing in it, is refused", function()
+    local w, why = Wanted.from_csv("name,thing\na,b\n")
+    T.eq(w, nil); T.eq(why, "columns")
+    w, why = Wanted.from_csv("")
+    T.eq(w, nil); T.eq(why, "empty")
+end)
+
+T.test("a title is matched ignoring case, punctuation, a leading article, a subtitle and the series in brackets", function()
+    T.eq(Wanted.title_key("The Hallmarked Man (Cormoran Strike, #7)"), "hallmarked man")
+    T.eq(Wanted.title_key("Hallmarked Man"), "hallmarked man")
+    T.eq(Wanted.title_key("Dune: Deluxe Edition"), "dune")
+    T.eq(Wanted.title_key("Ender's Game"), "enders game")
+    T.eq(Wanted.title_key("Salt & Iron"), "salt and iron")
+end)
+T.test("an author's surname comes from either order", function()
+    T.eq(Wanted.surname("Robert Galbraith"), "galbraith")
+    T.eq(Wanted.surname("Galbraith, Robert"), "galbraith")
+    T.eq(Wanted.surname("J. R. R. Tolkien"), "tolkien")
+end)
+
+local library = {
+    { path = "/a", title = "The Hallmarked Man", authors = "Robert Galbraith" },
+    { path = "/b", title = "Project Hail Mary: A Novel", authors = "Andy Weir\nSomeone Else" },
+    { path = "/c", title = "Hallmarked Man", authors = "Another Person" },
+}
+
+T.test("owned books are found by title and surname, the rest are missing in the order of the list", function()
+    local owned, missing = Wanted.match(Wanted.from_csv(GOODREADS), library)
+    T.eq(owned["/a"].title, "The Hallmarked Man")
+    T.eq(owned["/b"].title, "Project Hail Mary")
+    T.eq(owned["/c"], nil)
+    T.eq(#missing, 1)
+    T.eq(missing[1].title, "The Will of the Many")
+end)
+T.test("the same title by someone else is not a match", function()
+    local owned = Wanted.match({ books = { { title = "Hallmarked Man", author = "Nobody Else" } } }, library)
+    T.eq(next(owned), nil)
+end)
+
+local function fake()
+    local data = {}
+    return { readSetting = function(_, k) return data[k] end, saveSetting = function(_, k, v) data[k] = v end, delSetting = function(_, k) data[k] = nil end }
+end
+
+T.test("the list is kept in the settings and forgotten", function()
+    local st = fake()
+    T.eq(Wanted.saved(st), nil)
+    Wanted.save(st, { source = "csv", books = { { title = "A" } } }, 100)
+    T.eq(#Wanted.saved(st).books, 1)
+    T.eq(Wanted.saved(st).imported, 100)
+    Wanted.forget(st)
+    T.eq(Wanted.saved(st), nil)
+end)
+T.test("boost is on by default, the row of books you do not own is off", function()
+    local st = fake()
+    T.eq(Wanted.boost(st), true)
+    T.eq(Wanted.show_unowned(st), false)
+    Wanted.set_boost(st, false); Wanted.set_show_unowned(st, true)
+    T.eq(Wanted.boost(st), false)
+    T.eq(Wanted.show_unowned(st), true)
+end)
