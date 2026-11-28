@@ -17,6 +17,9 @@
 --   ctx.now          the time now (default os.time()); the On hold labels are measured from it
 --   ctx.history      { path, ... } books you have opened, most recent first (started books outside it are found in the library)
 --   ctx.collection   { name, paths } a collection chosen in settings, in its own order; or nil
+--   ctx.wanted       { [path] = entry } the books of your want-to-read list that are in the library (wanted.lua); they are tagged (`listed`)
+--   ctx.boost        false to not rank them higher (default: they are picked for you first, and come first in Recently added)
+--   ctx.unowned      { { title, author, series, series_index, cover_file }, ... } the books of that list you do not have (cover_file: a picture of the cover, when there is one); a "Want to read" row of up to three (nil: no row)
 --   ctx.per_group    how many in each group (default 4, a shelf of covers)
 --
 -- groups(ctx) -> { { id, name, books = { { path, title, note }, ... } }, ... } with a group left out when it has no books. A book
@@ -101,7 +104,9 @@ end
 -- Why a suggestion was made, in a sentence: `short` for a card, `long` for the detail sheet. Both are nil when there is nothing to say.
 function Suggest.explain(group_name, book, group)
     local liked, tags = book.because or {}, book.matched or {}
-    if group_name == "picked_for_you" and book.fallback == "start" then
+    if group_name == "picked_for_you" and book.listed_pick then
+        return _("On your want-to-read list"), _("On your want-to-read list.")
+    elseif group_name == "picked_for_you" and book.fallback == "start" then
         local line = Suggest.series_text(book)
         if line and tonumber(book.series_index) == 1 then
             return T(_("%1, a good place to start"), line), T(_("%1, a good place to start."), line)
@@ -132,6 +137,8 @@ function Suggest.explain(group_name, book, group)
         return nil, _("You put this one on hold.")
     elseif group_name == "recently_added" then
         return nil, _("Recently added to your library.")
+    elseif group_name == "want_to_read" then
+        return nil, _("On your want-to-read list. It is not in your library yet.")
     end
 end
 
@@ -193,6 +200,7 @@ function Suggest.groups(ctx)
             local gaps = Series.missing(ctx.library or {}, path)
             if #gaps > 0 then book.missing = gaps end
         end
+        if ctx.wanted and ctx.wanted[path] then book.listed = true end
         for key, value in pairs(extra or {}) do book[key] = value end
         group[#group + 1] = book
     end
@@ -267,7 +275,25 @@ function Suggest.groups(ctx)
 
     -- 4. Picked for you: one unread book whose tags match the books you have rated highly or finished.
     local foryou = {}
-    if ctx.rating_of then
+    local on_list = ctx.wanted and next(ctx.wanted) and ctx.boost ~= false and ctx.wanted or nil
+    if on_list then
+        -- A book from your want-to-read list comes first: the one that fits your taste best, else the newest.
+        local function wanted_and_eligible(path) return on_list[path] and eligible(path) end
+        local pick = ctx.rating_of and Taste.pick { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, allowed = wanted_and_eligible }
+        local path = pick and pick.path
+        if not path then
+            local newest, newest_at
+            for _i, r in ipairs(ctx.library or {}) do
+                if not taken[r.path] and status_of(r.path) == "new" and wanted_and_eligible(r.path) then
+                    local at = tonumber((ctx.modified_of or function() return 0 end)(r.path)) or 0
+                    if not newest_at or at > newest_at then newest, newest_at = r.path, at end
+                end
+            end
+            path = newest
+        end
+        if path then take(foryou, path, nil, false, { listed_pick = true }) end
+    end
+    if #foryou == 0 and ctx.rating_of then
         local pick = Taste.pick { library = ctx.library, status_of = status_of, rating_of = ctx.rating_of, skip = taken, allowed = eligible }
         if pick then take(foryou, pick.path, table.concat(pick.tags, " \u{00B7} "), false, { because = pick.because, matched = pick.tags }) end
     end
@@ -355,6 +381,8 @@ function Suggest.groups(ctx)
     local modified_of = ctx.modified_of or function() return 0 end
     for _i, r in ipairs(candidates) do when[r.path] = tonumber(modified_of(r.path)) or 0 end
     table.sort(candidates, function(a, b)
+        local la, lb = on_list and on_list[a.path] and true or false, on_list and on_list[b.path] and true or false
+        if la ~= lb then return la end
         if when[a.path] ~= when[b.path] then return when[a.path] > when[b.path] end
         return tostring(a.path) < tostring(b.path)
     end)
@@ -381,8 +409,18 @@ function Suggest.groups(ctx)
     end
 
 
+    -- Books of your want-to-read list that you do not have: only when asked for (ctx.unowned). Nothing to open, so they come last.
+    if ctx.unowned and not (ctx.hidden_groups or {})["want_to_read"] then
+        local wanted = {}
+        for _i, w in ipairs(ctx.unowned) do
+            if #wanted >= math.min(per, 3) then break end -- three: the row is one line across, a book to each of the list's three columns
+            wanted[#wanted + 1] = { title = w.title, authors = w.author, series = w.series, series_index = w.series_index, unowned = true, cover_file = w.cover_file }
+        end
+        if #wanted > 0 then out[#out + 1] = { id = "wanted", name = "want_to_read", books = wanted } end
+    end
+
     -- Shown in this order, which is not the order they claim books in: the single picks first, then what you were reading, then lists.
-    local rank = { next_in_series = 1, picked_for_you = 2, something_different = 3, started = 4, more_by_author = 5, collection = 6, recently_added = 7, on_hold = 8 }
+    local rank = { next_in_series = 1, picked_for_you = 2, something_different = 3, started = 4, more_by_author = 5, collection = 6, recently_added = 7, on_hold = 8, want_to_read = 9 }
     table.sort(out, function(a, b) return (rank[a.name] or 99) < (rank[b.name] or 99) end)
     return out
 end

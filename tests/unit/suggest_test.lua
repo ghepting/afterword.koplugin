@@ -462,3 +462,61 @@ T.test("a hidden row is left out and its books go to the next row that wants the
     for _, g in ipairs(without) do count = count + #g.books end
     T.eq(count > 0, true) -- the books it would have taken are still offered, in another row
 end)
+
+-- The want-to-read list
+local wl = {
+    { path = "/a", title = "Newest", authors = "A One" },
+    { path = "/b", title = "On The List", authors = "B Two" },
+    { path = "/c", title = "Older On The List", authors = "C Three" },
+    { path = "/d", title = "Oldest", authors = "D Four" },
+}
+local wl_when = { ["/a"] = 400, ["/b"] = 300, ["/c"] = 200, ["/d"] = 100 }
+local function wgroups(extra)
+    local c = { library = wl, status_of = function() return "new" end, rating_of = function() return 0 end, history = {},
+        modified_of = function(p) return wl_when[p] end, wanted = { ["/b"] = {}, ["/c"] = {} } }
+    for k, v in pairs(extra or {}) do c[k] = v end
+    return Suggest.groups(c)
+end
+
+T.test("a book on your want-to-read list is tagged wherever it appears", function()
+    local tagged = {}
+    for _, g in ipairs(wgroups()) do for _, b in ipairs(g.books) do tagged[b.path] = b.listed or false end end
+    T.eq(tagged["/b"], true)
+    T.eq(tagged["/c"], true)
+    T.eq(tagged["/a"] or tagged["/d"] or false, false)
+end)
+T.test("picked for you: a book on your list comes first, the newest of them, with its reason", function()
+    local g = find(wgroups(), "for_you")
+    T.eq(paths(g), "/b")
+    local short, long = Suggest.explain("picked_for_you", g.books[1], g)
+    T.eq(short, "On your want-to-read list")
+    T.eq(long, "On your want-to-read list.")
+end)
+T.test("recently added: a book on your list comes before newer ones", function()
+    local g = find(wgroups(), "recent")
+    T.eq(g.books[1].path, "/c")
+end)
+T.test("with the boost off the list only tags: nothing is picked or ranked for it", function()
+    local groups = wgroups({ boost = false })
+    for _, g in ipairs(groups) do for _, b in ipairs(g.books) do T.eq(b.listed_pick, nil) end end
+    T.eq(paths(find(groups, "for_you")), "/a") -- the newest book, as without a list
+end)
+T.test("a book of your list you finished or hid is never picked", function()
+    local g = find(wgroups({ hidden = { ["/b"] = true } }), "for_you")
+    T.eq(paths(g), "/c")
+end)
+T.test("the Want to read row is made only when asked for, holds at most per_group books, and comes last", function()
+    T.eq(find(wgroups(), "wanted"), nil)
+    local unowned = { { title = "One", author = "X", series = "S", series_index = 1 }, { title = "Two", author = "Y" }, { title = "Three", author = "Z" } }
+    local groups = wgroups({ unowned = unowned, per_group = 2 })
+    local last = groups[#groups]
+    T.eq(last.id, "wanted")
+    T.eq(#last.books, 2)
+    T.eq(last.books[1].unowned, true)
+    T.eq(last.books[1].title, "One")
+    T.eq(last.books[1].authors, "X")
+    T.eq(last.books[1].path, nil)
+    T.eq(find(wgroups({ unowned = unowned, hidden_groups = { want_to_read = true } }), "wanted"), nil)
+    local many = { { title = "A" }, { title = "B" }, { title = "C" }, { title = "D" }, { title = "E" } }
+    T.eq(#find(wgroups({ unowned = many }), "wanted").books, 3) -- three across, however many the lists hold
+end)
