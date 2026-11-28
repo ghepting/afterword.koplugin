@@ -517,4 +517,6 @@ T.test("the Want to read row is made only when asked for, holds at most per_grou
     T.eq(last.books[1].authors, "X")
     T.eq(last.books[1].path, nil)
     T.eq(find(wgroups({ unowned = unowned, hidden_groups = { want_to_read = true } }), "wanted"), nil)
+    local many = { { title = "A" }, { title = "B" }, { title = "C" }, { title = "D" }, { title = "E" } }
+    T.eq(#find(wgroups({ unowned = many }), "wanted").books, 3) -- three across, however many the lists hold
 end)

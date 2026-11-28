@@ -1003,7 +1003,7 @@ local function wanted_screen()
         local boost, show = Wanted.boost(G_reader_settings), Wanted.show_unowned(G_reader_settings)
         rows[#rows + 1] = { kind = "toggle", height = 72, text = _("Rank books on my lists higher"), sub = _("Books you have that are on a list come first in the picks"), on = boost,
             on_tap = function() Wanted.set_boost(G_reader_settings, not boost); state.menu:rebuild() end }
-        rows[#rows + 1] = { kind = "toggle", height = 72, text = _("Show books I don't own"), sub = _("A Want to read row in the picks, up to 4 books"), on = show,
+        rows[#rows + 1] = { kind = "toggle", height = 72, text = _("Show books I don't own"), sub = _("A Want to read row in the picks, up to 3 books"), on = show,
             on_tap = function() Wanted.set_show_unowned(G_reader_settings, not show); state.menu:rebuild() end }
         rows[#rows + 1] = { kind = "spacer", rule = false, height = 20 }
         return rows

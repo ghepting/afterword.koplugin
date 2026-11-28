@@ -19,7 +19,7 @@
 --   ctx.collection   { name, paths } a collection chosen in settings, in its own order; or nil
 --   ctx.wanted       { [path] = entry } the books of your want-to-read list that are in the library (wanted.lua); they are tagged (`listed`)
 --   ctx.boost        false to not rank them higher (default: they are picked for you first, and come first in Recently added)
---   ctx.unowned      { { title, author, series, series_index }, ... } the books of that list you do not have; a "Want to read" row (nil: no row)
+--   ctx.unowned      { { title, author, series, series_index }, ... } the books of that list you do not have; a "Want to read" row of up to three (nil: no row)
 --   ctx.per_group    how many in each group (default 4, a shelf of covers)
 --
 -- groups(ctx) -> { { id, name, books = { { path, title, note }, ... } }, ... } with a group left out when it has no books. A book
@@ -413,7 +413,7 @@ function Suggest.groups(ctx)
     if ctx.unowned and not (ctx.hidden_groups or {})["want_to_read"] then
         local wanted = {}
         for _i, w in ipairs(ctx.unowned) do
-            if #wanted >= per then break end
+            if #wanted >= math.min(per, 3) then break end -- three: the row is one line across, a book to each of the list's three columns
             wanted[#wanted + 1] = { title = w.title, authors = w.author, series = w.series, series_index = w.series_index, unowned = true }
         end
         if #wanted > 0 then out[#out + 1] = { id = "wanted", name = "want_to_read", books = wanted } end

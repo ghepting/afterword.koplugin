@@ -410,6 +410,7 @@ function Afterword:showPicker(info, on_open, opts)
     -- below them, three columns to a row.
     local single = { next_in_series = true, picked_for_you = true, something_different = true }
     local items, cards, columns = {}, {}, {}
+    local strip -- the Want to read row: its books side by side in one row, not a column of its own with two empty places beside it
     for _i, g in ipairs(groups) do
         local name = (heading[g.name] or function() return g.name end)(g)
         if single[g.name] and #cards < 2 then
@@ -418,6 +419,11 @@ function Afterword:showPicker(info, on_open, opts)
                 heading = name, group = g.name, book = book, why = (Suggest.explain(g.name, book, g)),
                 solid = #cards == 0, button = _("Start reading"),
             }
+        elseif g.name == "want_to_read" then
+            strip = {}
+            for k, book in ipairs(g.books) do
+                strip[k] = { heading = k == 1 and name or " ", group = g.name, books = { book } }
+            end
         else
             columns[#columns + 1] = { heading = name, group = g.name, books = g.books, progress = g.name == "started" }
         end
@@ -428,6 +434,7 @@ function Afterword:showPicker(info, on_open, opts)
         for i = first, math.min(first + 2, #columns) do row[#row + 1] = columns[i] end
         items[#items + 1] = { kind = "lists", columns = row }
     end
+    if strip then items[#items + 1] = { kind = "lists", columns = strip } end
     if #items == 0 then
         self:showNothing(function() self:showPicker(info, on_open, opts) end)
         return
